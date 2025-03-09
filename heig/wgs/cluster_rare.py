@@ -413,8 +413,8 @@ def check_input(args, log):
         args.cmac_max = np.inf
     if args.cmac_min <= 100 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
         log.info(
-            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 100. "
-             "Only burden will be used.")
+            ("WARNING: Burden/SKAT/STAAR cannot be used for genes with cMAC <= 100. "
+             "Only permutation test will be used.")
         )
     if args.cmac_min <= 500 and args.use_annot_weights:
         log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 500.")

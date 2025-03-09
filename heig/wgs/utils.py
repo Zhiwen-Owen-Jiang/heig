@@ -907,8 +907,8 @@ def format_output(cate_pvalues, voxels, staar_only, sig_thresh):
         if cate_results.shape[0] > 0:
             output.append(cate_results)
 
-        if "burden_test" in cate_pvalues and cate_results["burden_test"] is not None:
-            burden_test = pd.concat([meta_data, cate_results["burden_test"]], axis=1)
+        if "burden_test" in cate_pvalues[mask] and cate_pvalues[mask]["burden_test"] is not None:
+            burden_test = pd.concat([meta_data, cate_pvalues[mask]["burden_test"]], axis=1)
             if sig_thresh is not None:
                 burden_test = burden_test.loc[to_keep]
             if burden_test.shape[0] > 0:
@@ -949,7 +949,7 @@ class PermDistribution:
         self.breaks = [bin[0] for bin in self.bins]
 
         h5file = h5py.File(f"{perm_file}", "r")
-        all_bins = self.list_datasets(h5file)
+        all_bins = list_datasets(h5file)
         for bin_str in all_bins:
             bin1, bin2, voxel = tuple([int(x) for x in bin_str.split("_")])
             bin = tuple([bin1, bin2])
@@ -960,16 +960,16 @@ class PermDistribution:
             self.max_p[bin][voxel] = len(self.sig_stats[bin][voxel]) / count
         h5file.close()
 
-    @staticmethod
-    def list_datasets(hdf5_file):
-        dataset_names = []
-        
-        def visitor_func(name, node):
-            if isinstance(node, h5py.Dataset):
-                dataset_names.append(name)
-        
-        hdf5_file.visititems(visitor_func)
-        return dataset_names
+
+def list_datasets(hdf5_file):
+    dataset_names = []
+    
+    def visitor_func(name, node):
+        if isinstance(node, h5py.Dataset):
+            dataset_names.append(name)
+    
+    hdf5_file.visititems(visitor_func)
+    return dataset_names
 
 
 # class Table:

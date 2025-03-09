@@ -333,11 +333,11 @@ def check_input(args, log):
     
     if args.cmac_min <= 100 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
         log.info(
-            ("WARNING: SKAT/STAAR cannot be used when cMAC <= 100. "
-             "Only burden will be used.")
+            ("WARNING: Burden/SKAT/STAAR cannot be used for genes with cMAC <= 100. "
+             "Only permutation test will be used.")
         )
     if args.cmac_min <= 500 and args.use_annot_weights:
-        log.info("WARNING: annotation weights cannot be used when cMAC <= 500.")
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 500.")
 
     if args.variant_category is None:
         variant_category = ["all"]
@@ -405,7 +405,9 @@ def run(args, log):
         perm = PermDistribution(args.perm)
 
         # single gene analysis
-        vset_test = VariantSetTest(rv_sumstats.bases, rv_sumstats.var, perm)
+        if args.voxels is None:
+            args.voxels = np.arange(rv_sumstats.bases.shape[0])
+        vset_test = VariantSetTest(rv_sumstats.bases, rv_sumstats.var, perm, args.voxels)
         all_vset_test_pvalues = coding_vset_analysis(
             rv_sumstats,
             annot,

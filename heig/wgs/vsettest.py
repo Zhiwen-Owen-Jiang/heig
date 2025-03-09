@@ -427,9 +427,9 @@ class VariantSetTest:
 
         if burden_effect is not None:
             burden_test = pd.DataFrame(
-                {'Burden_effect': burden_effect, 
-                 'Burden_se': burden_se,
-                 'Burden_pvalue': burden_pvalue}
+                {'EFFECT': burden_effect, 
+                 'SE': burden_se,
+                 'P': burden_pvalue}
             )
         else:
             burden_test = None
