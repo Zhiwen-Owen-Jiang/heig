@@ -943,9 +943,8 @@ tfce_parser.add_argument(
     help="TFCE threshold to exclude associations."
 )
 tfce_parser.add_argument(
-    "--total-points",
-    type=int,
-    help="Total number of data points in wild bootstrap."
+    "--tfce-null",
+    help="Directory to null distribution of TFCE."
 )
 
 # arguments for permutation.py
@@ -1394,7 +1393,7 @@ def check_accepted_args(module, args, log):
             "tfce_thresh",
             "sig_thresh",
             "variant_category",
-            "total_points",
+            "tfce_null",
             "threads"
         },
         "permute":{
