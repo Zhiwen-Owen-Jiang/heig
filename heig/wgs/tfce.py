@@ -79,10 +79,12 @@ class TFCE:
         all_res = np.ones(len(self.coord[0])) * 0.001
         all_res[index] = results
         stat_map = np.zeros(self.roi_mask.shape)
+        tfce_map = np.zeros(self.roi_mask.shape)
         stat_map[self.roi_mask] = all_res
 
         stat_map_crop = stat_map[self.slices]
-        tfce_map = self._tfce(stat_map_crop)
+        tfce_map_crop = self._tfce(stat_map_crop)
+        tfce_map[self.slices] = tfce_map_crop
 
         return tfce_map
 
@@ -168,7 +170,7 @@ def nifti_coord_mask(coord_img_file):
 
 
 def summarize_results(
-        tfce, results_idx, tfce_null, variant_category, sig_thresh, cluster_thresh
+        tfce, results_idx, tfce_null, variant_category, sig_thresh, tfce_quantile_level
     ):
     """
     Computing TFCE for significant associations
@@ -199,19 +201,22 @@ def summarize_results(
         results.loc[results[test] == 0, test] = results.loc[results[test] > 0, test].min()
         log_pvalues = -np.log10(results[test])
         tfce_res = tfce.tfce(results["INDEX"], log_pvalues)
-        tfce_res[tfce_res == 0.001] = 0
-        tfce_thresh = tfce_null.quantile(results['CMAC'].to_list()[0], cluster_thresh)
-        labeled_clusters, num_clusters = label(tfce_res > tfce_thresh)
+
+        if tfce_null is not None:
+            tfce_thresh = tfce_null.quantile(results['CMAC'].to_list()[0], tfce_quantile_level)
+        else:
+            tfce_thresh = 0
+        labeled_clusters, num_clusters = label(tfce_res > tfce_thresh + 0.001)
         
         if num_clusters == 0:
             continue
-        n_clusters.append(num_clusters - 1)
+        n_clusters.append(num_clusters)
         max_tfce.append(np.max(tfce_res))
         n_sig_voxels.append(len(log_pvalues))
 
         voxels_in_cluster_list = list()
         for cluster in range(1, num_clusters + 1):
-            voxels_in_cluster = np.where(labeled_clusters[labeled_clusters >= 0.001] == cluster)[0] + 1
+            voxels_in_cluster = np.where(labeled_clusters[tfce.roi_mask] == cluster)[0] + 1
             voxels_in_cluster_list.append(voxels_in_cluster)
         voxels_in_cluster = ';'.join([','.join(x.astype(str)) for x in voxels_in_cluster_list])
         cluster_info.append(voxels_in_cluster)
@@ -283,11 +288,11 @@ def check_input(args, log):
         args.results_idx = ds.parse_input(args.results_idx)
         for file in args.results_idx:
             ds.check_existence(file)
-        if args.tfce_thresh is None:
-            args.tfce_thresh = 0
-            log.info("Set TFCE threshold as 0")
-        if args.tfce_null is None:
-            raise ValueError("--tfce-null is required")
+        if args.tfce_quantile_level is None:
+            args.tfce_quantile_level = 0
+            log.info("Set TFCE quantile level as 0")
+        # if args.tfce_null is None:
+        #     raise ValueError("--tfce-null is required")
         if args.variant_category is None:
             raise ValueError("--variant-category is required")
         else:
@@ -317,7 +322,10 @@ def run(args, log):
     tfce = TFCE(coord, roi_mask, slices)
 
     if args.results_idx is not None:
-        tfce_null = TFCEnull(args.tfce_null)
+        if args.tfce_null is not None:
+            tfce_null = TFCEnull(args.tfce_null)
+        else:
+            tfce_null = None
         results_summary_list = list()
         for results_idx_file in args.results_idx:
             log.info(f"Read result index file from {results_idx_file}")
@@ -329,7 +337,7 @@ def run(args, log):
                 tfce_null,
                 args.variant_category, 
                 args.sig_thresh, 
-                args.tfce_thresh,
+                args.tfce_quantile_level,
             )
             results_summary_list.append(results_summary)
         results_summary = pd.concat(results_summary_list, axis=0)

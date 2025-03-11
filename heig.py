@@ -938,9 +938,12 @@ tfce_parser.add_argument(
     help="Null associations returned by --rv-cluster."
 )
 tfce_parser.add_argument(
-    "--tfce-thresh",
+    "--tfce-quantile-level",
     type=float,
-    help="TFCE threshold to exclude associations."
+    help=(
+        "TFCE quantile level to exclude associations, "
+        "e.g., 0.95 means the 95% quantile. Default: 0."
+    )
 )
 tfce_parser.add_argument(
     "--tfce-null",
@@ -1390,7 +1393,7 @@ def check_accepted_args(module, args, log):
             "coord_dir",
             "results_idx",
             "null_assoc",
-            "tfce_thresh",
+            "tfce_quantile_level",
             "sig_thresh",
             "variant_category",
             "tfce_null",
