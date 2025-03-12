@@ -30,12 +30,15 @@ class Permutation:
             self, 
             mask,
             n_samples=5*10**8,
+            sig_thresh=2.5e-6,
             threads=1,
         ):
         """
         Parameters:
         ------------
         mask: an instance of CreatingMask
+        n_samples: total number of permutation points
+        sig_thresh: significant threshold
         threads: number of threads
 
         """
@@ -51,7 +54,7 @@ class Permutation:
                           (10,11), (12,14), (15,20), (21,30), (31,60), (61,100)]
         self.threads = threads
         self.n_subs = self.resid_voxels.shape[0]
-        self.sig_thresh = chi2.ppf(1 - 2.5e-6, 1)
+        self.sig_thresh = chi2.ppf(1 - sig_thresh, 1)
         self.logger = logging.getLogger(__name__)
 
     def _permute(self):
@@ -315,6 +318,9 @@ def check_input(args, log):
         args.perm_list = ds.parse_input(args.perm_list)
         for x in args.perm_list:
             ds.check_existence(x)
+    if args.sig_thresh is None:
+        args.sig_thresh = 2.5e-6
+        log.info("Set significance threshold as 2.5e-6")
     
 
 def run(args, log):
@@ -416,7 +422,7 @@ def run(args, log):
 
             # permutation
             log.info("Doing permutation ...")
-            permutation = Permutation(mask, args.n_bootstrap, args.threads)
+            permutation = Permutation(mask, args.n_bootstrap, args.sig_thresh, args.threads)
             burden_sig_stats_dict, burden_count_dict = permutation.run()
 
             # save results
