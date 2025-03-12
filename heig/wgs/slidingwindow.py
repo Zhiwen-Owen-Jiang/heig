@@ -122,13 +122,14 @@ class SlidingWindow(GeneralAnnotation):
 
         for start in range(self.start, self.end, self.sliding_length):
             end = start + self.window_length
-            chr_intervals.append((start, end))
+            # chr_intervals.append((start, end))
             start_idx = find_loc(positions, start)
             end_idx = find_loc(positions, end) + 1
             if start_idx == -1 or positions[start_idx] != start:
                 start_idx += 1
             if end_idx > start_idx + 1:
                 windows.append(list(range(start_idx, end_idx)))
+                chr_intervals.append((start, end-1))
 
         return chr_intervals, windows
 
