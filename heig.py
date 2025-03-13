@@ -949,6 +949,14 @@ tfce_parser.add_argument(
     "--tfce-null",
     help="Directory to null distribution of TFCE."
 )
+tfce_parser.add_argument(
+    "--sig-thresh2",
+    type=float,
+    help=(
+        "Significant threshold for the most significant voxel in a cluster. "
+        "Clusters do not meet this threshold will be excluded."
+    )
+)
 
 # arguments for permutation.py
 permutation_parser.add_argument(
@@ -1274,7 +1282,7 @@ def check_accepted_args(module, args, log):
             "rv_tests",
             "use_annot_weights",
             "sig_thresh",
-            "perm"
+            "perm",
         },
         "cluster":{
             "cluster",
@@ -1397,7 +1405,8 @@ def check_accepted_args(module, args, log):
             "sig_thresh",
             "variant_category",
             "tfce_null",
-            "threads"
+            "threads",
+            "sig_thresh2"
         },
         "permute":{
             "permute",

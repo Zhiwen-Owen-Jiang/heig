@@ -86,7 +86,7 @@ class TFCE:
         tfce_map_crop = self._tfce(stat_map_crop)
         tfce_map[self.slices] = tfce_map_crop
 
-        return tfce_map
+        return tfce_map, stat_map
 
 
 class TFCEnull:
@@ -170,7 +170,13 @@ def nifti_coord_mask(coord_img_file):
 
 
 def summarize_results(
-        tfce, results_idx, tfce_null, variant_category, sig_thresh, tfce_quantile_level
+        tfce, 
+        results_idx, 
+        tfce_null, 
+        variant_category,
+        sig_thresh, 
+        tfce_quantile_level, 
+        sig_thresh2
     ):
     """
     Computing TFCE for significant associations
@@ -184,9 +190,9 @@ def summarize_results(
     cmac = list()
     most_sig_pv = list()
     n_clusters = list()
-    n_sig_voxels = list()
     cluster_info = list()
     max_tfce = list()
+    sig_thresh2 = -np.log10(sig_thresh2) 
 
     for _, result_info in results_idx.iterrows():
         results = pd.read_csv(result_info['RESULT_FILE'], sep='\t')
@@ -200,7 +206,7 @@ def summarize_results(
         results["INDEX"] -= 1
         results.loc[results[test] == 0, test] = results.loc[results[test] > 0, test].min()
         log_pvalues = -np.log10(results[test])
-        tfce_res = tfce.tfce(results["INDEX"], log_pvalues)
+        tfce_res, stat_map = tfce.tfce(results["INDEX"], log_pvalues)
 
         if tfce_null is not None:
             tfce_thresh = tfce_null.quantile(results['CMAC'].to_list()[0], tfce_quantile_level)
@@ -210,14 +216,27 @@ def summarize_results(
         
         if num_clusters == 0:
             continue
-        n_clusters.append(num_clusters)
-        max_tfce.append(np.max(tfce_res))
-        n_sig_voxels.append(len(log_pvalues))
-
+        
         voxels_in_cluster_list = list()
+        cluster_tfce_list = list()
+        n_valid_clusters = 0
         for cluster in range(1, num_clusters + 1):
-            voxels_in_cluster = np.where(labeled_clusters[tfce.roi_mask] == cluster)[0] + 1
-            voxels_in_cluster_list.append(voxels_in_cluster)
+            if (
+                np.max(stat_map[labeled_clusters == cluster]) > sig_thresh2 and 
+                np.sum(labeled_clusters == cluster) > 1
+            ):
+                voxels_in_cluster = np.where(labeled_clusters[tfce.roi_mask] == cluster)[0] + 1
+                voxels_in_cluster_list.append(voxels_in_cluster)
+                cluster_tfce_list.append(np.max(tfce_res[labeled_clusters == cluster]))
+                n_valid_clusters += 1
+
+        if n_valid_clusters == 0:
+            continue
+
+        n_clusters.append(n_valid_clusters)
+        global_max_tfce = round(np.max(cluster_tfce_list), 3)
+        cluster_max_tfce = ';'.join([str(round(x, 3)) for x in cluster_tfce_list])
+        max_tfce.append(cluster_max_tfce)
         voxels_in_cluster = ';'.join([','.join(x.astype(str)) for x in voxels_in_cluster_list])
         cluster_info.append(voxels_in_cluster)
         
@@ -229,24 +248,27 @@ def summarize_results(
         cmac.append(results['CMAC'].to_list()[0])
         most_sig_pv.append(results[test].min())
 
-    results_summary = pd.DataFrame(
-        {
-            'GENE': gene,
-            'CHR': chr,
-            'START': start,
-            'END': end,
-            'CATEGORY': variant_category,
-            'N_VARIANTS': n_variants,
-            'CMAC': cmac,
-            'MOST_SIG_PV': most_sig_pv,
-            'MAX_TFCE': max_tfce,
-            'N_SIG_VOXELS': n_sig_voxels,
-            'N_CLUSTERS': n_clusters,
-            'VOXELS_IN_EACH_CLUSTER': cluster_info,
-        }
-    )
-    
-    return results_summary
+    if n_clusters:
+        results_summary = pd.DataFrame(
+            {
+                'GENE': gene,
+                'CHR': chr,
+                'START': start,
+                'END': end,
+                'CATEGORY': variant_category,
+                'N_VARIANTS': n_variants,
+                'CMAC': cmac,
+                'MOST_SIG_PV': most_sig_pv,
+                'GLOBAL_MAX_TFCE': global_max_tfce,
+                # 'N_SIG_VOXELS': n_sig_voxels,
+                'N_CLUSTERS': n_clusters,
+                'MAX_TFCE_OF_EACH_CLUSTER': max_tfce,
+                'VOXELS_IN_EACH_CLUSTER': cluster_info,
+            }
+        )
+        return results_summary
+    else:
+        return None
 
 
 def summarize_null_results(tfce, null_assoc, sig_thresh, threads):
@@ -291,8 +313,6 @@ def check_input(args, log):
         if args.tfce_quantile_level is None:
             args.tfce_quantile_level = 0
             log.info("Set TFCE quantile level as 0")
-        # if args.tfce_null is None:
-        #     raise ValueError("--tfce-null is required")
         if args.variant_category is None:
             raise ValueError("--variant-category is required")
         else:
@@ -312,6 +332,9 @@ def check_input(args, log):
     if args.sig_thresh is None:
         args.sig_thresh = 2.5e-6
         log.info("Set significance threshold as 2.5e-6")
+    if args.sig_thresh2 is None:
+        args.sig_thresh2 = args.sig_thresh
+        log.info(f"Set significance threshold as {args.sig_thresh}")
 
 
 def run(args, log):
@@ -338,11 +361,16 @@ def run(args, log):
                 args.variant_category, 
                 args.sig_thresh, 
                 args.tfce_quantile_level,
+                args.sig_thresh2
             )
-            results_summary_list.append(results_summary)
-        results_summary = pd.concat(results_summary_list, axis=0)
-        results_summary.to_csv(f"{args.out}_tfce.txt", sep="\t", index=None)
-        log.info(f"\nSaved TFCE of significant associations to {args.out}_tfce.txt")
+            if results_summary is not None:
+                results_summary_list.append(results_summary)
+        if results_summary_list:
+            results_summary = pd.concat(results_summary_list, axis=0)
+            results_summary.to_csv(f"{args.out}_tfce.txt", sep="\t", index=None)
+            log.info(f"\nSaved TFCE of significant associations to {args.out}_tfce.txt")
+        else:
+            log.info(f"\nNo significant results.")
 
     else:
         log.info(f"Read null associations from {args.null_assoc}")
