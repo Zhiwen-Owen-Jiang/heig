@@ -1372,7 +1372,10 @@ def check_accepted_args(module, args, log):
             "annot_ht",
             "variant_sets",
             "variant_category",
-            "geno_mt"
+            "geno_mt",
+            "perm",
+            "rv_tests",
+            "use_annot_weights"
         },
         "rv_single":{
             "rv_single",

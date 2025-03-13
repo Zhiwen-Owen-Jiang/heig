@@ -11,6 +11,7 @@ from heig.wgs.mt import SparseGenotype
 from heig.wgs.vsettest import VariantSetTest
 from heig.wgs.null import fit_null_model
 from heig.wgs.wgs2 import get_interval, extract_chr_interval
+from heig.wgs.utils import PermDistribution
 from heig.wgs.utils import *
 
 
@@ -72,7 +73,7 @@ input:
 #     return half_ldr_score_cond, cov_mat_cond, cov_cond
 
 
-def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, log):
+def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, use_annot_weights, log):
     """
     Extracting genotype for the gene
     
@@ -89,7 +90,7 @@ def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, log
     coding = Coding(variant_set_locus, variant_type)
     chr, start, end = get_interval(variant_set_locus)
     mask_idx = coding.category_dict[variant_category]
-    numeric_idx, phred_cate = coding.parse_annot(mask_idx)
+    numeric_idx, phred_cate = coding.parse_annot(mask_idx, use_annot_weights)
 
     vset = vset[numeric_idx]
     maf = maf[numeric_idx]
@@ -121,7 +122,7 @@ def adjust_cond(resid_ldr, covar, bases, vset, chr, loco_preds):
     var /= n_subs - n_covars  # (N, )
 
     # Z'(I-M)\Xi, (m, r)
-    half_ldr_score = vset @ resid_ldr  
+    half_ldr_score = (vset @ resid_ldr).astype(np.float32)  
 
     # Z'(I-M)Z
     covar_U, _, covar_Vt = np.linalg.svd(covar, full_matrices=False)
@@ -145,11 +146,17 @@ def check_input(args, log):
         raise ValueError("--sparse-genotype is required")
     if args.geno_mt is None:
         raise ValueError("--geno-mt is required")
+    if args.perm is None:
+        raise ValueError("--perm is required")
     if args.variant_sets is None:
         raise ValueError("--variant-sets is required")
     log.info(f"{args.variant_sets.shape[0]} gene(s) in --variant-sets.")
     if args.variant_category is None:
         raise ValueError("--variant-category is required")
+    
+    if args.rv_tests is None:
+        args.rv_tests = ["staar"]
+
     args.variant_category = args.variant_category.lower()
     if args.variant_category not in {
         "plof",
@@ -262,7 +269,7 @@ def run(args, log):
         log.info(
             (
                 f"{null_model.covar.shape[1]} fixed effects in the covariates "
-                "(including the intercept) after removing redundant effects.\n"
+                "(including the intercept) after removing redundant effects."
             )
         )
 
@@ -283,13 +290,13 @@ def run(args, log):
         genotype = gprocessor.get_bm().to_numpy()
         # genotype = genotype[np.sum(genotype, axis=1) > 0]
         log.info(f"{genotype.shape[0]} variant(s) included in conditional analysis.")
-        covar = np.concatenate([null_model.covar, genotype.T], axis=1)
+        covar = np.concatenate([null_model.covar, genotype.T], axis=1, dtype=np.float32)
 
         # reading annotation
         log.info(f"Read functional annotations from {args.annot_ht}")
         annot = hl.read_table(args.annot_ht)
         log.info("Annotating sparse genotype data ...")
-        sparse_genotype.annotate(annot)
+        sparse_genotype.annotate(annot, False)
         vset, locus, maf, mac = sparse_genotype.parse_data()
 
         # extracting gene
@@ -297,7 +304,8 @@ def run(args, log):
         (
             vset, maf, mac, phred_cate, annot_name, chr, start, end 
         ) = parse_gene(
-            locus, gene_name, gene_interval, args.variant_category, vset, maf, mac, log
+            locus, gene_name, gene_interval, args.variant_category, 
+            vset, maf, mac, args.use_annot_weights, log
         )
         
         # adjusting for conditioned variants
@@ -309,25 +317,30 @@ def run(args, log):
         index_file = IndexFile(f"{args.out}_result_index.txt")
         log.info(f"Saved result index file to {args.out}_result_index.txt")
 
-        # analysis
-        vset_test = VariantSetTest(null_model.bases, var)
-        is_rare = mac < args.mac_thresh
-        vset_test.input_vset(half_ldr_score, cov_mat, maf, is_rare, phred_cate)
-        pvalues = vset_test.do_inference(annot_name)
-        cate_pvalues = {}
-        cate_pvalues[args.variant_category] = {
-                    "n_variants": vset_test.n_variants,
-                    "cMAC": np.sum(mac),
-                    "pvalues": pvalues,
-                }
+        # reading permutation
+        log.info(f"Read permutation from {args.perm}")
+        perm = PermDistribution(args.perm)
 
+        # analysis
         if args.voxels is None:
             args.voxels = np.arange(null_model.bases.shape[0])
+        vset_test = VariantSetTest(null_model.bases, var, perm, args.voxels)
+        is_rare = mac < args.mac_thresh
+        cmac = int(np.sum(mac))
+        vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, phred_cate)
+        pvalues, burden_test = vset_test.do_inference_tests(args.rv_tests, annot_name)
+        cate_pvalues = {}
+        cate_pvalues[args.variant_category] = {
+            "n_variants": vset_test.n_variants,
+            "cMAC": cmac,
+            "pvalues": pvalues,
+            "burden_test": burden_test,
+        }
 
-        cate_output = format_output(
+        cate_output, burden_output = format_output(
             cate_pvalues,
             args.voxels,
-            args.staar_only,
+            False,
             args.sig_thresh
         )
         if cate_output is not None:
@@ -348,10 +361,22 @@ def run(args, log):
                 float_format="%.5e",
             )
             cond_locus.to_csv(f"{args.out}_cond_variants.txt", header=None, index=None)
-            log.info(f"Saved results for {gene_name} to {args.out}.txt")
+            log.info(f"\nSaved results for {gene_name} to {args.out}.txt")
             log.info(f"Saved conditioned variants to {args.out}_cond_variants.txt")
         else:
-            log.info(f"No significant results for {gene_name}.")
+            log.info(f"\nNo significant results for {gene_name}.")
+
+        if burden_output is not None:
+            out_path = f"{args.out}_burden.txt"
+            burden_output.to_csv(
+                out_path,
+                sep="\t",
+                header=True,
+                na_rep="NA",
+                index=None,
+                float_format="%.5e",
+            )
+            log.info(f"Saved burden results for {gene_name} to {args.out}_burden.txt")
 
     finally:
         clean(args.out)
