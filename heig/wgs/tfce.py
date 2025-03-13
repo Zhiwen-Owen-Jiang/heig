@@ -173,7 +173,6 @@ def summarize_results(
         tfce, 
         results_idx, 
         tfce_null, 
-        variant_category,
         sig_thresh, 
         tfce_quantile_level, 
         sig_thresh2
@@ -186,6 +185,7 @@ def summarize_results(
     chr = list()
     start = list()
     end = list()
+    variant_category = list()
     n_variants = list()
     cmac = list()
     most_sig_pv = list()
@@ -197,9 +197,7 @@ def summarize_results(
     for _, result_info in results_idx.iterrows():
         results = pd.read_csv(result_info['RESULT_FILE'], sep='\t')
         test = "STAAR-O" if "STAAR-O" in results.columns else "Burden(1,1)"
-        results = results[
-            (results["MASK"] == variant_category) & (results[test] < sig_thresh)
-        ].copy()
+        results = results[(results[test] < sig_thresh)].copy()
 
         if len(results) == 0:
             continue
@@ -244,6 +242,7 @@ def summarize_results(
         chr.append(result_info['CHR'])
         start.append(result_info['START'])
         end.append(result_info['END'])
+        variant_category.append(results['MASK'].to_list()[0])
         n_variants.append(results['N_VARIANTS'].to_list()[0])
         cmac.append(results['CMAC'].to_list()[0])
         most_sig_pv.append(results[test].min())
@@ -255,12 +254,11 @@ def summarize_results(
                 'CHR': chr,
                 'START': start,
                 'END': end,
-                'CATEGORY': variant_category,
+                'MASK': variant_category,
                 'N_VARIANTS': n_variants,
                 'CMAC': cmac,
                 'MOST_SIG_PV': most_sig_pv,
                 'GLOBAL_MAX_TFCE': global_max_tfce,
-                # 'N_SIG_VOXELS': n_sig_voxels,
                 'N_CLUSTERS': n_clusters,
                 'MAX_TFCE_OF_EACH_CLUSTER': max_tfce,
                 'VOXELS_IN_EACH_CLUSTER': cluster_info,
@@ -313,20 +311,6 @@ def check_input(args, log):
         if args.tfce_quantile_level is None:
             args.tfce_quantile_level = 0
             log.info("Set TFCE quantile level as 0")
-        if args.variant_category is None:
-            raise ValueError("--variant-category is required")
-        else:
-            args.variant_category = args.variant_category.lower()
-            if args.variant_category not in {
-                    "plof",
-                    "plof_ds",
-                    "missense",
-                    "disruptive_missense",
-                    "synonymous",
-                    "ptv",
-                    "ptv_ds",
-                }:
-                raise ValueError(f"invalid variant category: {args.variant_category}")
     if args.null_assoc is not None:
         ds.check_existence(args.null_assoc)
     if args.sig_thresh is None:
@@ -358,7 +342,6 @@ def run(args, log):
                 tfce,
                 results_idx, 
                 tfce_null,
-                args.variant_category, 
                 args.sig_thresh, 
                 args.tfce_quantile_level,
                 args.sig_thresh2
