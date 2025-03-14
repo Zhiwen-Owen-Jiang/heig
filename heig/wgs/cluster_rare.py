@@ -128,6 +128,7 @@ class RVcluster:
             self.voxels = voxels
 
         self.vset_ld = self._get_band_ld_matrix()
+        self.vset_test = VariantSetTest(self.bases, self.var, self.perm, self.voxels)
         
     def _get_band_ld_matrix(self):
         """
@@ -231,7 +232,7 @@ class RVcluster:
         Testing a single variant set
         
         """
-        vset_test = VariantSetTest(self.bases, self.var, self.perm, self.voxels)
+        # vset_test = VariantSetTest(self.bases, self.var, self.perm, self.voxels)
         half_ldr_score, cov_mat, maf, mac = self._parse_data(numeric_idx)
         if self.phred_cate is not None:
             annot = self.phred_cate[numeric_idx]
@@ -239,8 +240,8 @@ class RVcluster:
             annot = None
         is_rare = mac < self.mac_thresh
         cmac = np.sum(mac)
-        vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, annot)
-        pvalues, _ = vset_test.do_inference_tests(self.tests, self.annot_name)
+        self.vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, annot)
+        pvalues, _ = self.vset_test.do_inference_tests(self.tests, self.annot_name)
         pvalues.insert(0, "INDEX", self.voxels+1)
         sig_pvalues = pvalues.loc[pvalues.iloc[:, 1] < self.sig_thresh]
         if len(sig_pvalues) > 0:
@@ -384,6 +385,8 @@ def check_input(args, log):
     if args.perm is None:
         raise ValueError("--perm is required")
     
+    if args.rv_tests is None:
+        args.rv_tests = ["staar"]
     args.variant_category = args.variant_category.lower()
     if args.variant_category not in {
         "plof",
