@@ -564,18 +564,22 @@ class GProcessor:
                 ~exclude_variants.contains(self.snps_mt.rsid)
             )
 
-    def extract_exclude_locus(self, extract_locus, exclude_locus):
+    def extract_exclude_locus(self, extract_locus, exclude_locus, extract_chrs):
         """
         Extracting and excluding variants by locus
 
         Parameters:
         ------------
-        extract_locus: a hail.Table of locus
-        exclude_locus: a hail.Table of locus
+        extract_locus: a hail.set of locus
+        exclude_locus: a hail.set of locus
+        extract_chrs: a set of unique chromosomes
 
         """
-        if extract_locus is not None:
-            self.snps_mt = self.snps_mt.filter_rows(hl.is_defined(extract_locus[self.snps_mt.locus]))
+        if extract_locus is not None and extract_chrs is not None:
+            # self.snps_mt = self.snps_mt.filter_rows(hl.is_defined(extract_locus[self.snps_mt.locus]))
+            filter_chrs = hl.any(lambda c: self.snps_mt.locus.contig == c, hl.set(extract_chrs))
+            self.snps_mt = self.snps_mt.filter_rows(filter_chrs)
+            self.snps_mt = self.snps_mt.filter_rows(extract_locus.contains(self.snps_mt.locus))
         if exclude_locus is not None:
             self.snps_mt = self.snps_mt.filter_rows(~hl.is_defined(exclude_locus[self.snps_mt.locus]))
 
@@ -682,6 +686,21 @@ class GProcessor:
         self.snps_mt = self.snps_mt.cache()
         self.logger.info("Caching the genotype data in memory.")
 
+    def lift_over(self, to):
+        self.snps_mt.count_rows()
+        rg37 = hl.get_reference('GRCh37') 
+        rg38 = hl.get_reference('GRCh38')
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        main_dir = os.path.dirname(os.path.dirname(base_dir))
+        rg37.add_liftover(os.path.join(main_dir, f"misc/lift_over/references-grch37_to_grch38.over.chain.gz"), rg38) 
+        rg38.add_liftover(os.path.join(main_dir, f"misc/lift_over/references-grch38_to_grch37.over.chain.gz"), rg37)
+
+        self.snps_mt = self.snps_mt.annotate_rows(new_locus=hl.liftover(self.snps_mt.locus, to))
+        self.snps_mt = self.snps_mt.filter_rows(hl.is_defined(self.snps_mt.new_locus))
+        self.snps_mt = self.snps_mt.key_rows_by(locus=self.snps_mt.new_locus, alleles=self.snps_mt.alleles)
+        self.geno_ref = to
+
 
 def read_genotype_data(args, log):
     if args.geno_mt is not None:
@@ -787,6 +806,47 @@ def parse_locus(extract_locus, temp_dir, geno_ref):
     extract_locus = extract_locus.key_by("locus")
 
 
+# def read_extract_locus(extract_files, grch37, log):
+#     """
+#     Extracting variants from multiple files
+#     All files are confirmed to exist
+#     Empty files are skipped without error/warning
+#     Error out if no common variants exist
+
+#     Parameters:
+#     ------------
+#     extract_files: a list of tab/white-delimited files
+#     grch37: 
+
+#     Returns:
+#     ---------
+#     keep_snp_: a hail.Table of common SNPs
+
+#     """
+#     geno_ref = "GRCh37" if grch37 else "GRCh38"
+#     keep_snps_ = None
+#     for i, extract_file in enumerate(extract_files):
+#         if os.path.getsize(extract_file) == 0:
+#             continue
+#         ht = hl.import_table(extract_file, no_header=True, delimiter='\s+')
+#         ht = ht.annotate(
+#             locus=hl.parse_locus(ht['f0'], reference_genome=geno_ref)
+#         )
+#         ht = ht.key_by("locus")
+#         if i == 0:
+#             keep_snps_ = ht
+#         else:
+#             keep_snps_ = keep_snps_.filter(hl.is_defined(ht[keep_snps_.locus]))
+
+#     keep_snps_ = keep_snps_.drop('f0')
+#     if keep_snps_ is None or keep_snps_.count() == 0:
+#         raise ValueError("no variants are common in --extract-locus(-cond)")
+
+#     log.info(f"{keep_snps_.count()} variant(s) in --extract-locus(-cond) (logical 'and' for multiple files).")
+
+#     return keep_snps_
+
+
 def read_extract_locus(extract_files, grch37, log):
     """
     Extracting variants from multiple files
@@ -797,35 +857,83 @@ def read_extract_locus(extract_files, grch37, log):
     Parameters:
     ------------
     extract_files: a list of tab/white-delimited files
-    grch37: 
+    grch37: if the reference genome is GRCh37
 
     Returns:
     ---------
-    keep_snp_: a hail.Table of common SNPs
+    keep_locus: a hail.set of common loci
 
     """
     geno_ref = "GRCh37" if grch37 else "GRCh38"
-    keep_snps_ = None
+    keep_locus = None
+    unique_chrs = None
     for i, extract_file in enumerate(extract_files):
         if os.path.getsize(extract_file) == 0:
             continue
-        ht = hl.import_table(extract_file, no_header=True, delimiter='\s+')
-        ht = ht.annotate(
-            locus=hl.parse_locus(ht['f0'], reference_genome=geno_ref)
+        locus = pd.read_csv(extract_file, header=None, sep='\s+')[0].to_list()
+        if geno_ref == "GRCh38":
+            locus = ["chr" + x for x in locus]
+        chrs = set([contig for contig, _ in [v.split(":") for v in locus]])
+        locus = hl.set(
+            [hl.locus(contig, int(pos), reference_genome=geno_ref) 
+             for contig, pos in [v.split(":") for v in locus]]
         )
-        ht = ht.key_by("locus")
         if i == 0:
-            keep_snps_ = ht
+            keep_locus = locus
+            unique_chrs = chrs
         else:
-            keep_snps_ = keep_snps_.filter(hl.is_defined(ht[keep_snps_.locus]))
+            keep_locus = keep_locus.intersection(locus)
+            unique_chrs = unique_chrs.intersection(chrs)
 
-    keep_snps_ = keep_snps_.drop('f0')
-    if keep_snps_ is None or keep_snps_.count() == 0:
+    if keep_locus is None or hl.eval(keep_locus.length()) == 0:
         raise ValueError("no variants are common in --extract-locus(-cond)")
 
-    log.info(f"{keep_snps_.count()} variant(s) in --extract-locus(-cond) (logical 'and' for multiple files).")
+    log.info(
+        (f"{hl.eval(keep_locus.length())} variant(s) in --extract-locus(-cond) "
+         "(logical 'and' for multiple files).")
+    )
 
-    return keep_snps_
+    return keep_locus, unique_chrs
+
+
+# def read_exclude_locus(exclude_files, grch37, log):
+#     """
+#     Excluding SNPs from multiple files
+#     All files are confirmed to exist
+#     Empty files are skipped without error/warning
+#     Error out if no SNPs exist
+
+#     Parameters:
+#     ------------
+#     exclude_files: a list of tab/white-delimited files
+
+#     Returns:
+#     ---------
+#     keep_snp_: pd.DataFrame of common SNPs
+
+#     """
+#     geno_ref = "GRCh37" if grch37 else "GRCh38"
+#     exclude_snps_ = None
+#     for i, exclude_file in enumerate(exclude_files):
+#         if os.path.getsize(exclude_file) == 0:
+#             continue
+#         ht = hl.import_table(exclude_file, no_header=True, delimiter='\s+')
+#         ht = ht.annotate(
+#             locus=hl.parse_locus(ht['f0'], reference_genome=geno_ref)
+#         )
+#         ht = ht.key_by("locus")
+#         if i == 0:
+#             exclude_snps_ = ht
+#         else:
+#             exclude_snps_ = exclude_snps_.union(ht)
+
+#     exclude_snps_ = exclude_snps_.drop('f0')
+#     if exclude_snps_ is None or exclude_snps_.count() == 0:
+#         raise ValueError("no variants in --extract-locus(-cond)")
+    
+#     log.info(f"{exclude_snps_.count()} variant(s) in --exclude-locus(-cond) (logical 'or' for multiple files).")
+
+#     return exclude_snps_
 
 
 def read_exclude_locus(exclude_files, grch37, log):
@@ -841,31 +949,35 @@ def read_exclude_locus(exclude_files, grch37, log):
 
     Returns:
     ---------
-    keep_snp_: pd.DataFrame of common SNPs
+    exclude_locus: a hail.set of locus 
 
     """
     geno_ref = "GRCh37" if grch37 else "GRCh38"
-    exclude_snps_ = None
+    exclude_locus = None
     for i, exclude_file in enumerate(exclude_files):
         if os.path.getsize(exclude_file) == 0:
             continue
-        ht = hl.import_table(exclude_file, no_header=True, delimiter='\s+')
-        ht = ht.annotate(
-            locus=hl.parse_locus(ht['f0'], reference_genome=geno_ref)
+        locus = pd.read_csv(exclude_file, header=None, sep='\s+')[0].to_list()
+        if geno_ref == "GRCh38":
+            locus = ["chr" + x for x in locus]
+        locus = hl.set(
+            [hl.locus(contig, int(pos), reference_genome=geno_ref) 
+             for contig, pos in [v.split(":") for v in locus]]
         )
-        ht = ht.key_by("locus")
         if i == 0:
-            exclude_snps_ = ht
+            exclude_locus = locus
         else:
-            exclude_snps_ = exclude_snps_.union(ht)
+            exclude_locus = exclude_locus.union(locus)
 
-    exclude_snps_ = exclude_snps_.drop('f0')
-    if exclude_snps_ is None or exclude_snps_.count() == 0:
+    if exclude_locus is None or hl.eval(exclude_locus.length()) == 0:
         raise ValueError("no variants in --extract-locus(-cond)")
-    
-    log.info(f"{exclude_snps_.count()} variant(s) in --exclude-locus(-cond) (logical 'or' for multiple files).")
 
-    return exclude_snps_
+    log.info(
+        (f"{hl.eval(exclude_locus.length())} variant(s) in "
+         "--exclude-locus(-cond) (logical 'or' for multiple files).")
+    )
+
+    return exclude_locus
 
 
 def format_output(cate_pvalues, voxels, staar_only, sig_thresh):
