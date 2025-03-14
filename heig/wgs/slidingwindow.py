@@ -330,6 +330,8 @@ def run(args, log):
 
         if args.extract_locus is not None:
             args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
+        else:
+            unique_chrs = None
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
