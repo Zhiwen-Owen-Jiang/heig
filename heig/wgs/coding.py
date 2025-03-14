@@ -316,8 +316,8 @@ def check_input(args, log):
     if args.perm is None:
         raise ValueError("--perm is required")
     
-    # if args.staar_only:
-    #     log.info("Saving STAAR-O results only.")
+    if args.rv_tests is None:
+        args.rv_tests = ["staar"]
 
     if args.mac_thresh is None:
         args.mac_thresh = 10

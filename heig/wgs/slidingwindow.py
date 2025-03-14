@@ -298,8 +298,8 @@ def check_input(args, log):
         args.sliding_length = args.window_length // 2
         log.info(f"Set sliding length as {args.sliding_length}.")
     
-    # if args.staar_only:
-    #     log.info("Saving STAAR-O results only.")
+    if args.rv_tests is None:
+        args.rv_tests = ["staar"]
 
     if args.mac_thresh is None:
         args.mac_thresh = 10
@@ -312,6 +312,14 @@ def check_input(args, log):
         log.info(f"Set --cmac-min as default 2")
     if args.cmac_max is None:
         args.cmac_max = np.inf
+
+    if args.cmac_min <= 100 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
+        log.info(
+            ("WARNING: Burden/SKAT/STAAR cannot be used for genes with cMAC <= 100. "
+             "Only permutation test will be used.")
+        )
+    if args.cmac_min <= 500 and args.use_annot_weights:
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 500.")
 
 
 def run(args, log):
