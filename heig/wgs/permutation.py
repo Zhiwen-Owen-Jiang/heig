@@ -389,12 +389,12 @@ def run(args, log):
 
             # log.info(f"Processing sparse genetic data ...")
             if args.extract_locus is not None:
-                args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+                args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
             if args.exclude_locus is not None:
                 args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
             
             sparse_genotype.keep(common_ids)
-            sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+            sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
             sparse_genotype.extract_chr_interval(args.chr_interval)
             sparse_genotype.extract_maf(args.maf_min, args.maf_max)
             sparse_genotype.extract_mac(args.mac_min, args.mac_max)

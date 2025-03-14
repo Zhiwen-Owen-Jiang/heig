@@ -380,7 +380,7 @@ def run(args, log):
         init_hail(args.spark_conf, args.grch37, args.out, log)
 
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
@@ -388,7 +388,7 @@ def run(args, log):
         log.info((f"Read rare variant summary statistics from "
                   f"{args.rv_sumstats_part1} and {args.rv_sumstats_part2}"))
         rv_sumstats = RVsumstats(args.rv_sumstats_part1, args.rv_sumstats_part2)
-        rv_sumstats.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        rv_sumstats.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         rv_sumstats.extract_chr_interval(args.chr_interval)
         rv_sumstats.extract_maf(args.maf_min, args.maf_max)
         rv_sumstats.extract_mac(args.mac_min, args.mac_max)

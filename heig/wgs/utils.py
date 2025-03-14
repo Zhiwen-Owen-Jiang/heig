@@ -581,7 +581,8 @@ class GProcessor:
             self.snps_mt = self.snps_mt.filter_rows(filter_chrs)
             self.snps_mt = self.snps_mt.filter_rows(extract_locus.contains(self.snps_mt.locus))
         if exclude_locus is not None:
-            self.snps_mt = self.snps_mt.filter_rows(~hl.is_defined(exclude_locus[self.snps_mt.locus]))
+            # self.snps_mt = self.snps_mt.filter_rows(~hl.is_defined(exclude_locus[self.snps_mt.locus]))
+            self.snps_mt = self.snps_mt.filter_rows(~exclude_locus.contains(self.snps_mt.locus))
 
     def extract_chr_interval(self, chr_interval=None):
         """

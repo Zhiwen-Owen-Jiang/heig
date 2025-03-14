@@ -232,7 +232,7 @@ def run(args, log):
         gprocessor = read_genotype_data(args, log)
 
         if args.extract_locus_cond is not None:
-            args.extract_locus_cond = read_extract_locus(
+            args.extract_locus_cond, unique_chrs_cond = read_extract_locus(
                 args.extract_locus_cond, args.grch37, log
             )
         if args.exclude_locus_cond is not None:
@@ -241,7 +241,9 @@ def run(args, log):
             )
 
         gprocessor.keep_remove_idvs(common_ids)
-        gprocessor.extract_exclude_locus(args.extract_locus_cond, args.exclude_locus_cond)
+        gprocessor.extract_exclude_locus(
+            args.extract_locus_cond, args.exclude_locus_cond, unique_chrs_cond
+        )
         for chr_interval_cond in args.chr_interval_cond:
             gprocessor.extract_chr_interval(chr_interval_cond)
         # gprocessor.extract_chr_interval(args.chr_interval_cond)
@@ -253,11 +255,11 @@ def run(args, log):
         sparse_genotype.keep(common_ids)
         
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
-        sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         sparse_genotype.extract_chr_interval(args.chr_interval)
         sparse_genotype.extract_maf(args.maf_min, args.maf_max)
         sparse_genotype.extract_mac(args.mac_min, args.mac_max)

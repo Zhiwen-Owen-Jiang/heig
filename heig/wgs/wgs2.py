@@ -342,20 +342,25 @@ class RVsumstats:
             else:
                 raise ValueError("--voxels index (one-based) out of range")
 
-    def extract_exclude_locus(self, extract_locus, exclude_locus):
+    def extract_exclude_locus(self, extract_locus, exclude_locus, extract_chrs):
         """
         Extracting and excluding variants by locus
 
         Parameters:
         ------------
-        extract_locus: a hail.Table of locus
-        exclude_locus: a hail.Table of locus
+        extract_locus: a hail.set of locus
+        exclude_locus: a hail.set of locus
+        extract_chrs: a set of unique chromosomes
 
         """
-        if extract_locus is not None:
-            self.locus = self.locus.filter(hl.is_defined(extract_locus[self.locus.locus]))
+        if extract_locus is not None and extract_chrs is not None:
+            # self.locus = self.locus.filter(hl.is_defined(extract_locus[self.locus.locus]))
+            filter_chrs = hl.any(lambda c: self.locus.locus.contig == c, hl.set(extract_chrs))
+            self.locus = self.locus.filter(filter_chrs)
+            self.locus = self.locus.filter(extract_locus.contains(self.locus.locus))
         if exclude_locus is not None:
-            self.locus = self.locus.filter(~hl.is_defined(exclude_locus[self.locus.locus]))
+            # self.locus = self.locus.filter(~hl.is_defined(exclude_locus.contains(self.locus.locus)))
+            self.locus = self.locus.filter(~exclude_locus.contains(self.locus.locus))
 
     def extract_chr_interval(self, chr_interval=None):
         """
@@ -565,12 +570,12 @@ def run(args, log):
 
         # log.info(f"Processing sparse genetic data ...")
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
         sparse_genotype.keep(common_ids)
-        sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         sparse_genotype.extract_chr_interval(args.chr_interval)
         sparse_genotype.extract_maf(args.maf_min, args.maf_max)
         sparse_genotype.extract_mac(args.mac_min, args.mac_max)

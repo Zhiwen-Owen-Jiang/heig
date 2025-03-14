@@ -72,20 +72,25 @@ class Annotation:
         self.annot = self.annot.key_by("locus", "alleles")
         self.annot = self.annot.drop("parsed_variant")
 
-    def extract_exclude_locus(self, extract_locus=None, exclude_locus=None):
+    def extract_exclude_locus(self, extract_locus=None, exclude_locus=None, extract_chrs=None):
         """
         Extracting and excluding variants by locus
 
         Parameters:
         ------------
-        extract_locus: a hail.Table of locus
-        exclude_locus: a hail.Table of locus
+        extract_locus: a hail.set of locus
+        exclude_locus: a hail.set of locus
+        extract_chrs: a set of chromosomes
 
         """
-        if extract_locus is not None:
-            self.annot = self.annot.filter(hl.is_defined(extract_locus[self.annot.locus]))
+        if extract_locus is not None and extract_chrs is not None:
+            # self.annot = self.annot.filter(hl.is_defined(extract_locus[self.annot.locus]))
+            filter_chrs = hl.any(lambda c: self.annot.locus.contig == c, hl.set(extract_chrs))
+            self.annot = self.annot.filter(filter_chrs)
+            self.annot = self.annot.filter(extract_locus.contains(self.annot.locus))
         if exclude_locus is not None:
-            self.annot = self.annot.filter(~hl.is_defined(exclude_locus[self.annot.locus]))
+            # self.annot = self.annot.filter(~exclude_locus.contains(self.annot.locus))
+            self.annot = self.annot.filter(~exclude_locus.contains(self.annot.locus))
 
     def extract_by_interval(self, chr_interval=None):
         """
@@ -237,7 +242,7 @@ def run(args, log):
         init_hail(args.spark_conf, args.grch37, args.out, log)
         
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
@@ -256,7 +261,7 @@ def run(args, log):
         log.info(f"Processing annotations ...")
         annot.extract_annots(args.annot_cols)
         annot.extract_by_interval(args.chr_interval)
-        annot.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        annot.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
 
         annot.save(args.out)
         annot = hl.read_table(f"{args.out}_annot.ht")

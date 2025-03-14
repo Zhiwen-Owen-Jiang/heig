@@ -845,6 +845,10 @@ make_mt_parser.add_argument(
     action="store_true",
     help="Skipping QC genotype data."
 )
+make_mt_parser.add_argument(
+    "--lift-over",
+    help="Target reference genome, either `GRCh37` or `GRCh38`."
+)
 
 # arguments for annotation.py
 rv_annotation_parser.add_argument(
@@ -1150,7 +1154,8 @@ def check_accepted_args(module, args, log):
             "save_sparse_genotype",
             "grch37",
             "skip_qc",
-            "threads"
+            "lift_over",
+            "threads",
         },
         "rv_null": {
             "rv_null",

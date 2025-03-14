@@ -46,6 +46,14 @@ def check_input(args, log):
         (args.extract_locus is not None or args.exclude_locus is not None)
     ):
         raise ValueError("--extract/--exclude cannot be used with --extract-locus/--exclude-locus")
+    
+    if args.lift_over is not None:
+        if args.lift_over not in {"GRCh37", "GRCh38"}:
+            raise ValueError("--lift-over must be GRCh37 or GRCh38")
+        if args.lift_over == "GRCh37" and args.grch37:
+            raise TypeError("Cannot lift over from GRCh37 to GRCh37")
+        if args.lift_over == "GRCh38" and not args.grch37:
+            raise TypeError("Cannot lift over from GRCh38 to GRCh38")
 
 
 def prepare_vset(snps_mt, variant_type):
@@ -132,20 +140,25 @@ class SparseGenotype:
         self.mac_idx = np.full(self.vset.shape[0], True)
         self.maf, self.mac = self._update_maf()
 
-    def extract_exclude_locus(self, extract_locus, exclude_locus):
+    def extract_exclude_locus(self, extract_locus, exclude_locus, extract_chrs):
         """
         Extracting and excluding variants by locus
 
         Parameters:
         ------------
-        extract_locus: a hail.Table of locus
-        exclude_locus: a hail.Table of locus
+        extract_locus: a hail.set of locus
+        exclude_locus: a hail.set of locus
+        extract_chrs: a set of unique chromosomes
 
         """
-        if extract_locus is not None:
-            self.locus = self.locus.filter(hl.is_defined(extract_locus[self.locus.locus]))
+        if extract_locus is not None and extract_chrs is not None:
+            # self.locus = self.locus.filter(hl.is_defined(extract_locus[self.locus.locus]))
+            filter_chrs = hl.any(lambda c: self.locus.locus.contig == c, hl.set(extract_chrs))
+            self.locus = self.locus.filter(filter_chrs)
+            self.locus = self.locus.filter(extract_locus.contains(self.locus.locus))
         if exclude_locus is not None:
-            self.locus = self.locus.filter(~hl.is_defined(exclude_locus[self.locus.locus]))
+            # self.locus = self.locus.filter(~hl.is_defined(exclude_locus.contains(self.locus.locus)))
+            self.locus = self.locus.filter(~exclude_locus.contains(self.locus.locus))
 
     def extract_chr_interval(self, chr_interval=None):
         """
@@ -227,7 +240,7 @@ class SparseGenotype:
 
         return maf, mac
     
-    def annotate(self, annot):
+    def annotate(self, annot, cache=True):
         """
         Annotating functional annotations to locus
         ensuring no NA in annotations
@@ -236,7 +249,8 @@ class SparseGenotype:
         if annot is not None:
             self.locus = self.locus.annotate(annot=annot[self.locus.key])
             self.locus = self.locus.filter(hl.is_defined(self.locus.annot))
-        self.locus = self.locus.cache()
+        if cache:
+            self.locus = self.locus.cache()
     
     def parse_data(self):
         """
@@ -266,7 +280,7 @@ def run(args, log):
         init_hail(args.spark_conf, args.grch37, args.out, log)
         
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
@@ -274,13 +288,18 @@ def run(args, log):
         gprocessor = read_genotype_data(args, log)
 
         # do preprocessing
-        gprocessor.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        gprocessor.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         gprocessor.extract_exclude_snps(args.extract, args.exclude)
         gprocessor.extract_chr_interval(args.chr_interval)
         gprocessor.keep_remove_idvs(args.keep, args.remove)
         if not args.skip_qc:
             log.info(f"Processing genotype data ...")
             gprocessor.do_processing(mode=args.qc_mode)
+
+        # liftover
+        if args.lift_over:
+            log.info(f"Lifting over to {args.lift_over}")
+            gprocessor.lift_over(args.lift_over)
 
         # save
         if args.save_sparse_genotype:
