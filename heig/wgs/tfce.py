@@ -186,66 +186,73 @@ def summarize_results(
     start = list()
     end = list()
     variant_category = list()
-    n_variants = list()
-    cmac = list()
+    n_variants_list = list()
+    cmac_list = list()
     most_sig_pv = list()
+    global_max_tfce = list()
     n_clusters = list()
     cluster_info = list()
     max_tfce = list()
-    sig_thresh2 = -np.log10(sig_thresh2) 
+    log_sig_thresh2 = -np.log10(sig_thresh2) 
 
     for _, result_info in results_idx.iterrows():
         results = pd.read_csv(result_info['RESULT_FILE'], sep='\t')
-        test = "STAAR-O" if "STAAR-O" in results.columns else "Burden(1,1)"
-        results = results[(results[test] < sig_thresh)].copy()
+        results_by_mask = results.groupby('MASK')
 
-        if len(results) == 0:
-            continue
-        results["INDEX"] -= 1
-        results.loc[results[test] == 0, test] = results.loc[results[test] > 0, test].min()
-        log_pvalues = -np.log10(results[test])
-        tfce_res, stat_map = tfce.tfce(results["INDEX"], log_pvalues)
+        for _, results_mask in results_by_mask:
+            mask = results_mask['MASK'].to_list()[0]
+            cmac = results_mask['CMAC'].to_list()[0]
+            n_variants = results_mask['N_VARIANTS'].to_list()[0]
+            test = results_mask.columns[4] if cmac > 100 else "Burden(1,1)"
+            results_mask = results_mask[(results_mask[test] < sig_thresh)].copy()
 
-        if tfce_null is not None:
-            tfce_thresh = tfce_null.quantile(results['CMAC'].to_list()[0], tfce_quantile_level)
-        else:
-            tfce_thresh = 0
-        labeled_clusters, num_clusters = label(tfce_res > tfce_thresh + 0.001)
-        
-        if num_clusters == 0:
-            continue
-        
-        voxels_in_cluster_list = list()
-        cluster_tfce_list = list()
-        n_valid_clusters = 0
-        for cluster in range(1, num_clusters + 1):
-            if (
-                np.max(stat_map[labeled_clusters == cluster]) > sig_thresh2 and 
-                np.sum(labeled_clusters == cluster) > 1
-            ):
-                voxels_in_cluster = np.where(labeled_clusters[tfce.roi_mask] == cluster)[0] + 1
-                voxels_in_cluster_list.append(voxels_in_cluster)
-                cluster_tfce_list.append(np.max(tfce_res[labeled_clusters == cluster]))
-                n_valid_clusters += 1
+            if len(results_mask) == 0:
+                continue
+            results_mask["INDEX"] -= 1
+            results_mask.loc[results_mask[test] == 0, test] = results_mask.loc[results_mask[test] > 0, test].min()
+            log_pvalues = -np.log10(results_mask[test])
+            tfce_res, stat_map = tfce.tfce(results_mask["INDEX"], log_pvalues)
 
-        if n_valid_clusters == 0:
-            continue
+            if tfce_null is not None:
+                tfce_thresh = tfce_null.quantile(cmac, tfce_quantile_level)
+            else:
+                tfce_thresh = 0
+            labeled_clusters, num_clusters = label(tfce_res > tfce_thresh + 0.001)
+            
+            if num_clusters == 0:
+                continue
+            
+            voxels_in_cluster_list = list()
+            cluster_tfce_list = list()
+            n_valid_clusters = 0
+            for cluster in range(1, num_clusters + 1):
+                if (
+                    np.max(stat_map[labeled_clusters == cluster]) > log_sig_thresh2 and 
+                    np.sum(labeled_clusters == cluster) > 1
+                ):
+                    voxels_in_cluster = np.where(labeled_clusters[tfce.roi_mask] == cluster)[0] + 1
+                    voxels_in_cluster_list.append(voxels_in_cluster)
+                    cluster_tfce_list.append(np.max(tfce_res[labeled_clusters == cluster]))
+                    n_valid_clusters += 1
 
-        n_clusters.append(n_valid_clusters)
-        global_max_tfce = round(np.max(cluster_tfce_list), 3)
-        cluster_max_tfce = ';'.join([str(round(x, 3)) for x in cluster_tfce_list])
-        max_tfce.append(cluster_max_tfce)
-        voxels_in_cluster = ';'.join([','.join(x.astype(str)) for x in voxels_in_cluster_list])
-        cluster_info.append(voxels_in_cluster)
-        
-        gene.append(result_info['VARIANT_SET'])
-        chr.append(result_info['CHR'])
-        start.append(result_info['START'])
-        end.append(result_info['END'])
-        variant_category.append(results['MASK'].to_list()[0])
-        n_variants.append(results['N_VARIANTS'].to_list()[0])
-        cmac.append(results['CMAC'].to_list()[0])
-        most_sig_pv.append(results[test].min())
+            if n_valid_clusters == 0:
+                continue
+
+            n_clusters.append(n_valid_clusters)
+            global_max_tfce.append(round(np.max(cluster_tfce_list), 3))
+            cluster_max_tfce = ';'.join([str(round(x, 3)) for x in cluster_tfce_list])
+            max_tfce.append(cluster_max_tfce)
+            voxels_in_cluster = ';'.join([','.join(x.astype(str)) for x in voxels_in_cluster_list])
+            cluster_info.append(voxels_in_cluster)
+            
+            gene.append(result_info['VARIANT_SET'])
+            chr.append(result_info['CHR'])
+            start.append(result_info['START'])
+            end.append(result_info['END'])
+            variant_category.append(mask)
+            n_variants_list.append(n_variants)
+            cmac_list.append(cmac)
+            most_sig_pv.append(results_mask[test].min())
 
     if n_clusters:
         results_summary = pd.DataFrame(
@@ -255,8 +262,8 @@ def summarize_results(
                 'START': start,
                 'END': end,
                 'MASK': variant_category,
-                'N_VARIANTS': n_variants,
-                'CMAC': cmac,
+                'N_VARIANTS': n_variants_list,
+                'CMAC': cmac_list,
                 'MOST_SIG_PV': most_sig_pv,
                 'GLOBAL_MAX_TFCE': global_max_tfce,
                 'N_CLUSTERS': n_clusters,
