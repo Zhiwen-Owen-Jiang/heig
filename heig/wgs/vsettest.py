@@ -52,7 +52,7 @@ class VariantSetTest:
         """
         self.maf = maf
         self.cmac = cmac
-        self.annot_weights = annotation_pred if cmac > 500 else None
+        self.annot_weights = annotation_pred if cmac > 1000 else None
         self.is_rare = is_rare
         self.half_ldr_score = half_ldr_score  # Z'(I-M)\Xi, (m, r)
         self.half_score = np.dot(self.half_ldr_score, self.bases.T)  # Z'(I-M)Y, (m, N)
@@ -81,8 +81,8 @@ class VariantSetTest:
 
         if annot is None:
             weights_dict["skat(1,25)"] = w1
-            weights_dict["skat(1,1)"] = w2
-            weights_dict["burden(1,25)"] = w1
+            # weights_dict["skat(1,1)"] = w2
+            # weights_dict["burden(1,25)"] = w1
             weights_dict["burden(1,1)"] = w2
             # weights_dict["acatv(1,25)"] = (w1 / w3) ** 2
             # weights_dict["acatv(1,1)"] = (w2 / w3) ** 2
@@ -93,8 +93,8 @@ class VariantSetTest:
                 annot = 1 - 10 ** (-annot / 10)
             annot = annot.T
             weights_dict["skat(1,25)"] = self._combine_weights(w1, np.sqrt(annot))
-            weights_dict["skat(1,1)"] = self._combine_weights(w2, np.sqrt(annot))
-            weights_dict["burden(1,25)"] = self._combine_weights(w1, annot)
+            # weights_dict["skat(1,1)"] = self._combine_weights(w2, np.sqrt(annot))
+            # weights_dict["burden(1,25)"] = self._combine_weights(w1, annot)
             weights_dict["burden(1,1)"] = self._combine_weights(w2, annot)
             # weights_dict["acatv(1,25)"] = self._combine_weights((w1 / w3) ** 2, annot)
             # weights_dict["acatv(1,1)"] = self._combine_weights((w2 / w3) ** 2, annot)
@@ -375,32 +375,32 @@ class VariantSetTest:
         all_results_df: a pd.DataFrame of results, each columns is a method
         
         """
-        n_weights = self.weights["skat(1,25)"].shape[0]
+        n_weights = self.weights["burden(1,1)"].shape[0]
         all_results = list()
-        burden_1_25_pvalues = np.zeros((n_weights, self.N))
+        # burden_1_25_pvalues = np.zeros((n_weights, self.N))
         burden_1_1_pvalues = np.zeros((n_weights, self.N))
         burden_effect, burden_se, burden_pvalue = None, None, None
         skat_1_25_pvalues = np.zeros((n_weights, self.N))
-        skat_1_1_pvalues = np.zeros((n_weights, self.N))
+        # skat_1_1_pvalues = np.zeros((n_weights, self.N))
 
-        if "burden" in tests or "staar" in tests or self.cmac <= 100:
+        if "burden" in tests or "staar" in tests or self.cmac <= 500:
             if compute_burden_effect:
                 burden_effect, burden_se, burden_pvalue = self._burden_test(self.weights["burden(1,1)"][0])
             for i in range(n_weights):
-                _, _, burden_1_25_pvalues[i] = self._burden_test(self.weights["burden(1,25)"][i])
+                # _, _, burden_1_25_pvalues[i] = self._burden_test(self.weights["burden(1,25)"][i])
                 _, _, burden_1_1_pvalues[i] = self._burden_test(self.weights["burden(1,1)"][i])
 
-        if ("skat" in tests or "staar" in tests) and self.cmac > 100:
+        if ("skat" in tests or "staar" in tests) and self.cmac > 500:
             for i in range(n_weights):
                 skat_1_25_pvalues[i] = self._skat_test(self.weights["skat(1,25)"][i])
-                skat_1_1_pvalues[i] = self._skat_test(self.weights["skat(1,1)"][i])
+                # skat_1_1_pvalues[i] = self._skat_test(self.weights["skat(1,1)"][i])
         
-        if "staar" in tests and self.cmac > 100:
+        if "staar" in tests and self.cmac > 500:
             all_pvalues = np.vstack(
                 [
                     skat_1_25_pvalues,
-                    skat_1_1_pvalues,
-                    burden_1_25_pvalues,
+                    # skat_1_1_pvalues,
+                    # burden_1_25_pvalues,
                     burden_1_1_pvalues,
                 ]
             )
@@ -410,14 +410,14 @@ class VariantSetTest:
             all_results.append(results_STAAR_O)
 
         for pvalues, test_method in (
-            (skat_1_25_pvalues, "SKAT(1,1)"),
-            (skat_1_1_pvalues, "SKAT(1,25)"),
-            (burden_1_25_pvalues, "Burden(1,1)"),
-            (burden_1_1_pvalues, "Burden(1,25)"),
+            (skat_1_25_pvalues, "SKAT(1,25)"),
+            # (skat_1_1_pvalues, "SKAT(1,1)"),
+            # (burden_1_25_pvalues, "Burden(1,25)"),
+            (burden_1_1_pvalues, "Burden(1,1)"),
         ):
             if pvalues.sum() == 0: # nan == 0 is False
                 continue
-            if n_weights > 1 and self.cmac > 100:
+            if n_weights > 1 and self.cmac > 1000:
                 comb_pvalues = cauchy_combination(pvalues).reshape(-1, 1)
             else:
                 comb_pvalues = None
