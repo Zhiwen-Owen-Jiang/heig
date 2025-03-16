@@ -1,8 +1,8 @@
 import time
 import logging
 import numpy as np
+import pandas as pd
 import hail as hl
-# from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
 import heig.input.dataset as ds
@@ -57,6 +57,7 @@ class RVcluster:
             vset,
             chr, 
             gene_numeric_idxs,
+            cmac_list,
             phred_cate,
             annot_name,
             maf,
@@ -76,7 +77,8 @@ class RVcluster:
         null_model: a NullModel instance
         vset: (m, n) csr_matrix of genotype
         chr: chromosome
-        gene_numeric_idxs: a dict of variant idxs for genes
+        gene_numeric_idxs: a list of variant idxs for genes
+        cmac_list: a list of cMAC
         phred_cate: functional annotations
         annot_name: names of annotations
         maf: a np.array of MAF
@@ -95,6 +97,7 @@ class RVcluster:
         self.bases = null_model.bases.astype(np.float32)
         self.vset = vset
         self.numeric_idx_list = gene_numeric_idxs
+        self.cmac_list = cmac_list
         self.phred_cate = phred_cate
         self.annot_name = annot_name
         self.maf = maf
@@ -109,10 +112,12 @@ class RVcluster:
         self.n_variants, self.n_subs = self.vset.shape
         self.n_covars = null_model.covar.shape[1]
         self.logger = logging.getLogger(__name__)
-        
+
+        self.vset_ld = self._get_ld_matrix()
         covar_U, _, covar_Vt = np.linalg.svd(null_model.covar, full_matrices=False)
         half_covar_proj = np.dot(covar_U, covar_Vt).astype(np.float32)
         self.vset_half_covar_proj = self.vset @ half_covar_proj
+        self.cov_mat_list = self._get_cov_mat()
 
         if loco_preds is not None:
             self.resid_ldr = null_model.resid_ldr - loco_preds.data_reader(chr)
@@ -127,152 +132,144 @@ class RVcluster:
         else:
             self.voxels = voxels
 
-        self.vset_ld = self._get_band_ld_matrix()
         self.vset_test = VariantSetTest(self.bases, self.var, self.perm, self.voxels)
+
+    def _get_ld_matrix(self):
+        vset = self.vset.astype(np.uint16)
+        return vset @ vset.T
         
-    def _get_band_ld_matrix(self):
+    def _get_cov_mat(self):
         """
-        Creating a banded sparse LD matrix with the bandwidth being
-        the length of the largest gene
+        Compute Z'(I-M)Z for all variant sets
         
         """
-        bandwidth = max([len(v) for _, v in self.numeric_idx_list.items()])
-        diagonal_data = list()
-        banded_data = list()
-        banded_row = list()
-        banded_col = list()
+        cov_mat_list = list()
+        for numeric_idx in self.numeric_idx_list:
+            vset_half_covar_proj = self.vset_half_covar_proj[numeric_idx]
+            vset_ld = self.vset_ld[numeric_idx][:, numeric_idx]
+            cov_mat = np.array((vset_ld - vset_half_covar_proj @ vset_half_covar_proj.T))
+            cov_mat_list.append(cov_mat)
+        return cov_mat_list
+    
+    # def _get_band_ld_matrix(self):
+    #     """
+    #     Creating a banded sparse LD matrix with the bandwidth being
+    #     the length of the largest gene
+        
+    #     """
+    #     bandwidth = max([len(v) for _, v in self.numeric_idx_list.items()])
+    #     diagonal_data = list()
+    #     banded_data = list()
+    #     banded_row = list()
+    #     banded_col = list()
 
-        for start in range(0, self.n_variants, bandwidth):
-            end1 = start + bandwidth
-            end2 = end1 + bandwidth
-            vset_block1 = self.vset[start:end1].astype(np.uint16)
-            vset_block2 = self.vset[start:end2].astype(np.uint16)
-            ld_rec = vset_block1 @ vset_block2.T
-            ld_rec_row, ld_rec_col = ld_rec.nonzero()
-            ld_rec_row += start
-            ld_rec_col += start
-            ld_rec_data = ld_rec.data
+    #     for start in range(0, self.n_variants, bandwidth):
+    #         end1 = start + bandwidth
+    #         end2 = end1 + bandwidth
+    #         vset_block1 = self.vset[start:end1].astype(np.uint16)
+    #         vset_block2 = self.vset[start:end2].astype(np.uint16)
+    #         ld_rec = vset_block1 @ vset_block2.T
+    #         ld_rec_row, ld_rec_col = ld_rec.nonzero()
+    #         ld_rec_row += start
+    #         ld_rec_col += start
+    #         ld_rec_data = ld_rec.data
 
-            diagonal_data.append(ld_rec_data[ld_rec_row == ld_rec_col])
-            mask = (np.abs(ld_rec_row - ld_rec_col) <= bandwidth) & (
-                ld_rec_col > ld_rec_row
-            )
-            banded_row.append(ld_rec_row[mask])
-            banded_col.append(ld_rec_col[mask])
-            banded_data.append(ld_rec_data[mask])
+    #         diagonal_data.append(ld_rec_data[ld_rec_row == ld_rec_col])
+    #         mask = (np.abs(ld_rec_row - ld_rec_col) <= bandwidth) & (
+    #             ld_rec_col > ld_rec_row
+    #         )
+    #         banded_row.append(ld_rec_row[mask])
+    #         banded_col.append(ld_rec_col[mask])
+    #         banded_data.append(ld_rec_data[mask])
 
-        diagonal_data = np.concatenate(diagonal_data)
-        banded_row = np.concatenate(banded_row)
-        banded_col = np.concatenate(banded_col)
-        banded_data = np.concatenate(banded_data)
-        shape = np.array([self.n_variants, self.n_variants])
+    #     diagonal_data = np.concatenate(diagonal_data)
+    #     banded_row = np.concatenate(banded_row)
+    #     banded_col = np.concatenate(banded_col)
+    #     banded_data = np.concatenate(banded_data)
+    #     shape = np.array([self.n_variants, self.n_variants])
 
-        lower_row = banded_col
-        lower_col = banded_row
-        diag_row_col = np.arange(shape[0])
+    #     lower_row = banded_col
+    #     lower_col = banded_row
+    #     diag_row_col = np.arange(shape[0])
 
-        full_row = np.concatenate([banded_row, lower_row, diag_row_col])
-        full_col = np.concatenate([banded_col, lower_col, diag_row_col])
-        full_data = np.concatenate([banded_data, banded_data, diagonal_data])
+    #     full_row = np.concatenate([banded_row, lower_row, diag_row_col])
+    #     full_col = np.concatenate([banded_col, lower_col, diag_row_col])
+    #     full_data = np.concatenate([banded_data, banded_data, diagonal_data])
 
-        vset_ld = csr_matrix((full_data, (full_row, full_col)), shape=shape)
-        return vset_ld
+    #     vset_ld = csr_matrix((full_data, (full_row, full_col)), shape=shape)
+    #     return vset_ld
 
-    def _compute_sumstats(self, sample_id):
+    def _compute_sumstats(self):
         """
         A permutation sample is generated by v_i*\\xi_{ij} for j = 1...r
         Each time partition new variant sets
 
         """
-        # np.random.seed(sample_id)
         resid_ldr_rand = self.resid_ldr[np.random.permutation(self.n_subs)]
-        # inner_ldr = np.dot(resid_ldr_rand.T, resid_ldr_rand).astype(np.float32)
-        # self.var = np.sum(np.dot(self.bases, inner_ldr) * self.bases, axis=1)
-        # self.var /= self.n_subs - self.n_covars  # (N, )
         self.half_ldr_score = self.vset @ resid_ldr_rand 
 
-    # def _variant_set_test(self, sample_id):
-    #     """
-    #     A wrapper function of variant set test for multiple sets
-
-    #     """
-    #     # sig_pvalues_list = []
-    
-    #     with ThreadPoolExecutor(max_workers=self.threads) as executor:
-    #         futures = [
-    #             executor.submit(
-    #                 self._variant_set_test_, sample_id, gene_id, gene_name, numeric_idx
-    #             )
-    #             for gene_id, (gene_name, numeric_idx) in enumerate(self.numeric_idx_list.items())
-    #         ]
-                    
-    #         sig_pvalues_list = [
-    #             future.result() for future in as_completed(futures) if future.result() is not None
-    #         ]
-        
-    #     return sig_pvalues_list
-    
     def _variant_set_test(self, sample_id):
         """
         A wrapper function of variant set test for multiple sets
         
         """
         sig_pvalues_list = []
-        for gene_id, (gene_name, numeric_idx) in enumerate(self.numeric_idx_list.items()):
+        for gene_id, numeric_idx in enumerate(self.numeric_idx_list):
             sig_pvalues = self._variant_set_test_(
-                sample_id, gene_id, gene_name, numeric_idx
+                sample_id, gene_id, numeric_idx
             )
             if sig_pvalues is not None:
                 sig_pvalues_list.append(sig_pvalues)
 
         return sig_pvalues_list
 
-    def _variant_set_test_(self, sample_id, gene_id, gene_name, numeric_idx):
+    def _variant_set_test_(self, sample_id, gene_id, numeric_idx):
         """
         Testing a single variant set
         
         """
-        # vset_test = VariantSetTest(self.bases, self.var, self.perm, self.voxels)
-        half_ldr_score, cov_mat, maf, mac = self._parse_data(numeric_idx)
+        half_ldr_score, cov_mat, maf, cmac = self._parse_data(gene_id, numeric_idx)
         if self.phred_cate is not None:
             annot = self.phred_cate[numeric_idx]
         else:
             annot = None
-        is_rare = mac < self.mac_thresh
-        cmac = np.sum(mac)
+        is_rare = None
+        # cmac = int(np.sum(mac))
         self.vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, annot)
-        pvalues, _ = self.vset_test.do_inference_tests(self.tests, self.annot_name)
-        pvalues.insert(0, "INDEX", self.voxels+1)
-        sig_pvalues = pvalues.loc[pvalues.iloc[:, 1] < self.sig_thresh]
-        if len(sig_pvalues) > 0:
-            sig_pvalues = sig_pvalues.iloc[:, :2]
-            sig_pvalues.columns = ["INDEX", "P"]
-            bin_idx = find_loc([x[0] for x in self.all_bins], cmac)
-            cmac_bin_count = self.cmac_bins_count[self.all_bins[bin_idx]]
-            sig_pvalues.insert(0, "CMAC_BIN_COUNT", cmac_bin_count)
-            sig_pvalues.insert(0, "CMAC", cmac)
-            sig_pvalues.insert(0, "N_VARIANTS", len(mac))
-            sig_pvalues.insert(0, "GENE", gene_name)
-            sig_pvalues.insert(0, "GENE_ID", gene_id+1)
-            sig_pvalues.insert(0, "SAMPLE_ID", sample_id+1)
-        else:
-            sig_pvalues = None
+        pvalues, _ = self.vset_test.do_inference_tests(self.tests, self.annot_name, False)
+        pvalues = pvalues.iloc[:, 0]
+        min_pvalue = pvalues.min()
+        if np.isnan(min_pvalue) or min_pvalue > self.sig_thresh:
+            return None
+        to_keep = pvalues < self.sig_thresh
+        bin_idx = find_loc([x[0] for x in self.all_bins], cmac)
+        cmac_bin_count = self.cmac_bins_count[self.all_bins[bin_idx]]
+
+        sig_pvalues = pd.DataFrame(
+            {
+                "SAMPLE_ID": sample_id+1,
+                "GENE_ID": gene_id+1,
+                "N_VARIANTS": len(maf),
+                "CMAC": cmac,
+                "CMAC_BIN_COUNT": cmac_bin_count,
+                "INDEX": self.voxels[to_keep]+1,
+                "P": pvalues[to_keep]
+            }
+        )
 
         return sig_pvalues
     
-    def _parse_data(self, numeric_idx):
+    def _parse_data(self, i, numeric_idx):
         """
         Extracting data for a variant set to test
         
         """
-        half_ldr_score = np.array(self.half_ldr_score[numeric_idx])
-        vset_half_covar_proj = np.array(self.vset_half_covar_proj[numeric_idx])
-        vset_ld = self.vset_ld[numeric_idx][:, numeric_idx]
-        cov_mat = np.array((vset_ld - vset_half_covar_proj @ vset_half_covar_proj.T)) # TODO: compute once
+        half_ldr_score = self.half_ldr_score[numeric_idx]
+        cov_mat = self.cov_mat_list[i]
         maf = self.maf[numeric_idx]
-        mac = self.mac[numeric_idx]
+        cmac = self.cmac_list[i]
         
-        return half_ldr_score, cov_mat, maf, mac
+        return half_ldr_score, cov_mat, maf, cmac
         
     def cluster_analysis(self, sample_id):
         """
@@ -283,7 +280,7 @@ class RVcluster:
         sample_id: int, permutation sample id (0-based)
 
         """
-        self._compute_sumstats(sample_id)
+        self._compute_sumstats()
         sig_pvalues_list = self._variant_set_test(sample_id)
 
         return sig_pvalues_list
@@ -371,36 +368,98 @@ def creating_mask(
     return chr, gene_numeric_idxs, cmac_bins_count, phred_cate, annot_name, vset, maf, mac
 
 
+def creating_mask_sliding_window(locus, vset, maf, mac, use_annot_weights=False):
+    """
+    Creating masks for a variant category and split into genes
+
+    Parameters:
+    ------------
+    locus: a hail.Table of locus info
+    vset: (m, n) csr_matrix of genotype
+    maf: a np.array of MAF
+    mac: a np.array of MAC
+    use_annot_weights: boolean, using annotation weights
+
+    Returns:
+    ---------
+    chr: chromosome of the genotype
+    gene_numeric_idxs: a list of list of variant idxs for each gene
+    phred_cate: a np.array of functional annotations
+    annot_name: annotation names
+    vset: genotype of the extracted variants 
+    maf: MAF of the extracted variants
+    mac: MAC of the extracted variants
+    
+    """
+    # get chr
+    chr = locus.aggregate(hl.agg.take(locus.locus.contig, 1)[0])
+    if locus.locus.dtype.reference_genome.name == "GRCh38":
+        chr = int(chr.replace("chr", ""))
+    else:
+        chr = int(chr)
+
+    if vset.shape[0] > 100000:
+        vset = vset[:100000]
+        mac = mac[:100000]
+        maf = maf[:100000]
+        n_variants = 100000
+    else:
+        n_variants = vset.shape[0]
+
+    gene_numeric_idxs = list()
+    cmac_list = list()
+    cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
+                 (10,11), (12,14), (15,20), (21,30), (31,60), 
+                 (61,100), (101,200), (201,300), (301,400), 
+                 (401,500), (501,1000)]
+    cmac_bins_count = {x: 1000 for x in cmac_bins}
+
+    variant_idxs = np.arange(n_variants)
+    for bin in cmac_bins:
+        output = list()
+        window_range = (max(2, int(bin[0]*0.1)), bin[1] + 1)
+        while True:
+            permuted_variant_idxs = variant_idxs[np.random.permutation(n_variants)]
+            start = 0
+            window_size = np.random.choice(list(range(*window_range)), 1)[0]
+            skip_size = int(window_size * 0.8) + 1
+            while start + window_size < n_variants:
+                end = start + window_size
+                selected_variants = permuted_variant_idxs[start: end]
+                cmac = np.sum(mac[selected_variants]) 
+                if bin[0] <= cmac <= bin[1]:
+                    output.append(selected_variants.tolist())
+                    cmac_list.append(cmac)
+                    if len(output) >= 1000:
+                        break
+                start += skip_size
+            if len(output) >= 1000:
+                break
+        gene_numeric_idxs.extend(output)
+
+    phred_cate, annot_name = None, None
+
+    return (
+        chr, gene_numeric_idxs, cmac_bins_count, cmac_list, 
+        phred_cate, annot_name, vset, maf, mac
+    )
+
+
 def check_input(args, log):
     if args.sparse_genotype is None:
         raise ValueError("--sparse-genotype is required")
     if args.spark_conf is None:
         raise ValueError("--spark-conf is required")
-    if args.annot_ht is None:
-        raise ValueError("--annot-ht (FAVOR annotation) is required")
     if args.null_model is None:
         raise ValueError("--null-model is required")
-    if args.variant_category is None:
-        raise ValueError("--variant-category is required")
     if args.perm is None:
         raise ValueError("--perm is required")
     
     if args.rv_tests is None:
         args.rv_tests = ["staar"]
-    args.variant_category = args.variant_category.lower()
-    if args.variant_category not in {
-        "plof",
-        "plof_ds",
-        "missense",
-        "disruptive_missense",
-        "synonymous",
-        "ptv",
-        "ptv_ds",
-        }:
-        raise ValueError(f"invalid variant category: {args.variant_category}")
     if args.n_bootstrap is None:
-        args.n_bootstrap = 100
-        log.info("Set #permutation as 100")
+        args.n_bootstrap = 20
+        log.info("Set #permutation as 20")
     if args.mac_thresh is None:
         args.mac_thresh = 30
         log.info(f"Set --mac-thresh as default 30")
@@ -496,10 +555,10 @@ def run(args, log):
         sparse_genotype.extract_maf(args.maf_min, args.maf_max)
         sparse_genotype.extract_mac(args.mac_min, args.mac_max)
 
-        # reading annotation
-        log.info(f"Read functional annotations from {args.annot_ht}")
-        annot = hl.read_table(args.annot_ht)
-        sparse_genotype.annotate(annot)
+        # # reading annotation
+        # log.info(f"Read functional annotations from {args.annot_ht}")
+        # annot = hl.read_table(args.annot_ht)
+        # sparse_genotype.annotate(annot)
         vset, locus, maf, mac = sparse_genotype.parse_data()
 
         # reading permutation
@@ -507,28 +566,33 @@ def run(args, log):
         perm = PermDistribution(args.perm)
 
         # creating mask
+        # (
+        #     chr, gene_numeric_idxs, cmac_bins_count, phred_cate, annot_name, vset, maf, mac
+        # ) = creating_mask(
+        #     locus, 
+        #     args.variant_sets, 
+        #     args.variant_category,
+        #     vset, 
+        #     maf, 
+        #     mac, 
+        #     args.cmac_min, 
+        #     args.cmac_max,
+        #     args.use_annot_weights
+        # )
+
         (
-            chr, gene_numeric_idxs, cmac_bins_count, phred_cate, annot_name, vset, maf, mac
-        ) = creating_mask(
-            locus, 
-            args.variant_sets, 
-            args.variant_category,
-            vset, 
-            maf, 
-            mac, 
-            args.cmac_min, 
-            args.cmac_max,
-            args.use_annot_weights
-        )
-        if args.cmac_max == np.inf:
-            log.info((f"Using {len(gene_numeric_idxs)} genes (cMAC >= {args.cmac_min}) of "
-                      f"{args.variant_category} variants in permutation."
-            ))
-        else:
-            log.info((f"Using {len(gene_numeric_idxs)} genes "
-                      f"({args.cmac_min} <= cMAC <= {args.cmac_max}) of "
-                      f"{args.variant_category} variants in permutation."
-            ))
+            chr, gene_numeric_idxs, cmac_bins_count, cmac_list, 
+            phred_cate, annot_name, vset, maf, mac
+        ) = creating_mask_sliding_window(locus, vset, maf, mac)
+        # if args.cmac_max == np.inf:
+        #     log.info((f"Using {len(gene_numeric_idxs)} genes (cMAC >= {args.cmac_min}) of "
+        #               f"{args.variant_category} variants in permutation."
+        #     ))
+        # else:
+        #     log.info((f"Using {len(gene_numeric_idxs)} genes "
+        #               f"({args.cmac_min} <= cMAC <= {args.cmac_max}) of "
+        #               f"{args.variant_category} variants in permutation."
+        #     ))
 
         # permutation
         cluster = RVcluster(
@@ -536,6 +600,7 @@ def run(args, log):
             vset, 
             chr, 
             gene_numeric_idxs, 
+            cmac_list,
             phred_cate,
             annot_name,
             maf, 

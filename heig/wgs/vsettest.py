@@ -205,7 +205,7 @@ class VariantSetTest:
     
     def _search_pvalue(self, sig_stats, burden_chisq, count, max_p):
         idx = np.searchsorted(sig_stats, burden_chisq, side='left')
-        pvalue = (len(sig_stats) - idx) / count
+        pvalue = (len(sig_stats) - idx + 1) / (count + 1)
         return pvalue if pvalue < max_p else np.nan
 
     def _acatv_test(self, weights_A, weights_B):
@@ -357,7 +357,7 @@ class VariantSetTest:
 
         return all_results_df
     
-    def do_inference_tests(self, tests, annot_name=None):
+    def do_inference_tests(self, tests, annot_name=None, compute_burden_effect=True):
         """
         Doing inference for the variant set using multiple weights and methods.
         if tests == burden or skat, do maf(1,1), maf(1,25), and weights
@@ -368,6 +368,7 @@ class VariantSetTest:
         ------------
         tests: a list of tests
         annot_name: a list of functional annotation names
+        compute_burden_effect: if computing burden effect
 
         Returns:
         ---------
@@ -382,8 +383,9 @@ class VariantSetTest:
         skat_1_25_pvalues = np.zeros((n_weights, self.N))
         skat_1_1_pvalues = np.zeros((n_weights, self.N))
 
-        if "burden" in tests or "staar" in tests:
-            burden_effect, burden_se, burden_pvalue = self._burden_test(self.weights["burden(1,1)"][0])
+        if "burden" in tests or "staar" in tests or self.cmac <= 100:
+            if compute_burden_effect:
+                burden_effect, burden_se, burden_pvalue = self._burden_test(self.weights["burden(1,1)"][0])
             for i in range(n_weights):
                 _, _, burden_1_25_pvalues[i] = self._burden_test(self.weights["burden(1,25)"][i])
                 _, _, burden_1_1_pvalues[i] = self._burden_test(self.weights["burden(1,1)"][i])
