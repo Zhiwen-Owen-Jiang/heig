@@ -595,7 +595,7 @@ class GProcessor:
                 f"Extracted variants in {self.chr} from {self.start} to {self.end}"
             )
             interval = hl.locus_interval(
-                self.chr, self.start, self.end, reference_genome=self.geno_ref
+                self.chr, self.start, self.end, reference_genome=self.geno_ref, includes_end=True
             )
             self.snps_mt = self.snps_mt.filter_rows(
                 interval.contains(self.snps_mt.locus)

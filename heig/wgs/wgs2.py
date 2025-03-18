@@ -374,7 +374,7 @@ class RVsumstats:
         if chr_interval is not None:
             chr, start, end = parse_interval(chr_interval, self.geno_ref)
             interval = hl.locus_interval(
-                chr, start, end, reference_genome=self.geno_ref
+                chr, start, end, reference_genome=self.geno_ref, includes_end=True
             )
             self.locus = self.locus.filter(interval.contains(self.locus.locus))
 
@@ -487,7 +487,7 @@ def extract_chr_interval(locus, gene_name, chr_interval, geno_ref, log):
 
     """
     chr, start, end = parse_interval(chr_interval, geno_ref)
-    interval = hl.locus_interval(chr, start, end, reference_genome=geno_ref)
+    interval = hl.locus_interval(chr, start, end, reference_genome=geno_ref, includes_end=True)
     locus = locus.filter(interval.contains(locus.locus))
     locus = locus.cache()
     n_variants = locus.count()

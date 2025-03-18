@@ -172,7 +172,7 @@ class SparseGenotype:
         if chr_interval is not None:
             chr, start, end = parse_interval(chr_interval, self.geno_ref)
             interval = hl.locus_interval(
-                chr, start, end, reference_genome=self.geno_ref
+                chr, start, end, reference_genome=self.geno_ref, includes_end=True
             )
             self.locus = self.locus.filter(interval.contains(self.locus.locus))
 

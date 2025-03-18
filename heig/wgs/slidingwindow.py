@@ -105,7 +105,7 @@ class SlidingWindow(GeneralAnnotation):
 
         while cur_right <= self.end:
             interval = hl.locus_interval(
-                self.chr, cur_left, cur_right, reference_genome=self.geno_ref
+                self.chr, cur_left, cur_right, reference_genome=self.geno_ref, includes_end=True
             )
             window = interval.contains(self.annot.locus)
             windows.append(window)
