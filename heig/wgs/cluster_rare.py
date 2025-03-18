@@ -347,7 +347,7 @@ def creating_mask(
         (2,2): 0, (3,3): 0, (4,4): 0, (5,5): 0, 
         (6,7): 0, (8,9): 0, (10,11): 0, (12,14): 0, 
         (15,20): 0, (21,30): 0, (31,60): 0, (61,100): 0,
-        (101, 500): 0, (501,): 0
+        (101,500): 0, (501,): 0
     }
     all_bins = list(cmac_bins_count.keys())
 
@@ -410,9 +410,8 @@ def creating_mask_sliding_window(locus, vset, maf, mac, use_annot_weights=False)
     cmac_list = list()
     cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
                  (10,11), (12,14), (15,20), (21,30), (31,60), 
-                 (61,100), (101,200), (201,300), (301,400), 
-                 (401,500), (501,1000)]
-    cmac_bins_count = {x: 1000 for x in cmac_bins}
+                 (61,100), (101,500), (501,1000)]
+    cmac_bins_count = {x: 100 for x in cmac_bins}
 
     variant_idxs = np.arange(n_variants)
     for bin in cmac_bins:
@@ -430,10 +429,10 @@ def creating_mask_sliding_window(locus, vset, maf, mac, use_annot_weights=False)
                 if bin[0] <= cmac <= bin[1]:
                     output.append(selected_variants.tolist())
                     cmac_list.append(cmac)
-                    if len(output) >= 1000:
+                    if len(output) >= 100:
                         break
                 start += skip_size
-            if len(output) >= 1000:
+            if len(output) >= 100:
                 break
         gene_numeric_idxs.extend(output)
 
@@ -473,13 +472,13 @@ def check_input(args, log):
         log.info(f"Set --cmac-min as default 2")
     if args.cmac_max is None:
         args.cmac_max = np.inf
-    if args.cmac_min <= 100 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
+    if args.cmac_min <= 500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
         log.info(
-            ("WARNING: Burden/SKAT/STAAR cannot be used for genes with cMAC <= 100. "
-             "Only permutation test will be used.")
+            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 500. "
+             "Only burden test will be used.")
         )
-    if args.cmac_min <= 500 and args.use_annot_weights:
-        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 500.")
+    if args.cmac_min <= 1000 and args.use_annot_weights:
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1000.")
 
 
 def run(args, log):

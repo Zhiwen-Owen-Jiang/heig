@@ -145,8 +145,10 @@ def check_input(args, log):
         args.sig_thresh = 5e-8
         log.info("Set significance threshold as 5e-8")
     if args.mac_min is None:
-        args.mac_min = 5
-        log.info(f"Set --mac-min as default 5")
+        args.mac_min = 100
+        log.info(f"Set --mac-min as default 100")
+    elif args.mac_min < 100:
+        raise ValueError('--mac-min cannot be less than 100')
     if args.variant_category is not None:
         if args.annot_ht is None:
             raise ValueError("--annot-ht (FAVOR annotation) is required")
