@@ -117,6 +117,7 @@ class SlidingWindow(GeneralAnnotation):
     
     def _partition_windows_fast(self):
         positions = np.array(self.annot.locus.position.collect())
+        idx = np.array(self.annot.idx.collect())
         chr_intervals = list()
         windows = list()
 
@@ -124,12 +125,14 @@ class SlidingWindow(GeneralAnnotation):
             end = start + self.window_length
             # chr_intervals.append((start, end))
             start_idx = find_loc(positions, start)
-            end_idx = find_loc(positions, end) + 1
-            if start_idx == -1 or positions[start_idx] != start:
+            end_idx = find_loc(positions, end-1)
+            if positions[start_idx] < start:
                 start_idx += 1
             if end_idx > start_idx + 1:
-                windows.append(list(range(start_idx, end_idx)))
+                windows.append(idx[start_idx: end_idx+1])
                 chr_intervals.append((start, end-1))
+                if start > positions[start_idx] or positions[end_idx] > end-1:
+                    raise ValueError('bug in partitioning windows')
 
         return chr_intervals, windows
 
@@ -234,14 +237,6 @@ def vset_analysis(
             all_pvalues = dict()
             # numeric_idx, phred_cate = sliding_window.parse_annot(window, use_annot_weights)
             numeric_idx, phred_cate = window, None
-            if len(numeric_idx) <= 1:
-                log.info(
-                    (
-                        f"Skipping window from {chr_interval[0]} to {chr_interval[1]} "
-                        "(< 2 variants)."
-                    )
-                )
-                continue
             half_ldr_score, cov_mat, maf, mac = rv_sumstats.parse_data(
                 numeric_idx
             )
