@@ -2,6 +2,7 @@ import h5py
 import nibabel as nib
 import numpy as np
 import pandas as pd
+# import numba
 from scipy.ndimage import label
 from concurrent.futures import ThreadPoolExecutor
 import heig.input.dataset as ds
@@ -18,6 +19,7 @@ significant/null pvalues
 
 TODO:
 1. support more image format
+2. speed up --null-assoc
 
 """
 
@@ -87,6 +89,61 @@ class TFCE:
         tfce_map[self.slices] = tfce_map_crop
 
         return tfce_map, stat_map
+
+
+# def tfce(coord, roi_mask, slices, index, results, h=2, E=0.5, dh=0.1):
+#     all_res = np.ones(len(coord[0])) * 0.001
+#     all_res[index] = results
+#     stat_map = np.zeros(roi_mask.shape)
+#     tfce_map = np.zeros(roi_mask.shape)
+#     stat_map[roi_mask] = all_res
+
+#     stat_map_crop = stat_map[slices]
+#     tfce_map_crop = np.zeros_like(stat_map_crop)
+#     tfce_map_crop[stat_map_crop == 0.001] = 0.001
+#     tfce_map_crop = tfce_inner(results, tfce_map_crop, stat_map_crop, h, E, dh)
+#     tfce_map[slices] = tfce_map_crop
+
+#     return tfce_map, stat_map
+
+
+# @numba.jit(nopython=True, parallel=True)
+# def tfce_inner(non_zeros, tfce_map, stat_map, h, E, dh):
+#     # tfce_map = np.zeros_like(stat_map)
+#     # tfce_map[stat_map == 0.001] = 0.001
+#     # non_zeros = stat_map[stat_map > 0.001]
+#     # thresholds = np.arange(np.min(non_zeros), np.max(non_zeros), dh)
+    
+#     for threshold in numba.prange(np.min(non_zeros), np.max(non_zeros), dh):
+#         binarized_map = stat_map >= threshold
+#         labeled_clusters, num_clusters = connected_components(binarized_map)
+#         for cluster_id in numba.prange(1, num_clusters + 1):
+#             cluster_mask = labeled_clusters == cluster_id
+#             cluster_size = np.sum(cluster_mask)
+#             increment = (cluster_size ** E) * (threshold ** h) * dh
+#             tfce_map[cluster_mask] += increment
+
+#     return tfce_map
+
+
+# @numba.jit(nopython=True, fastmath = True)
+# def connected_components(binary_image):
+#     # rows, cols = binary_image.shape
+#     labels = np.zeros_like(binary_image, dtype=np.int32)
+#     label_counter = 1
+    
+#     for i in numba.prange(binary_image.shape[0]):
+#         for j in numba.prange(binary_image.shape[1]):
+#             if binary_image[i, j] == 1:
+#                 if i > 0 and labels[i-1, j] > 0:
+#                     labels[i, j] = labels[i-1, j]
+#                 elif j > 0 and labels[i, j-1] > 0:
+#                     labels[i, j] = labels[i, j-1]
+#                 else:
+#                     labels[i, j] = label_counter
+#                     label_counter += 1
+
+#     return labels, label_counter - 1
 
 
 class TFCEnull:
@@ -287,17 +344,25 @@ def summarize_null_results(tfce, null_assoc, sig_thresh, threads):
     null_assoc["INDEX"] -= 1
     null_assoc_group = null_assoc.groupby(["SAMPLE_ID", "GENE_ID"])
     null_assoc_tfce = list()
+    # numba.set_num_threads(threads) 
 
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = [
-            executor.submit(tfce.tfce, null_assoc_["INDEX"], null_assoc_["LOG10P"])
-            for _, null_assoc_ in null_assoc_group
-        ]
+    # with ThreadPoolExecutor(max_workers=threads) as executor:
+    #     futures = [
+    #         executor.submit(tfce.tfce, null_assoc_["INDEX"], null_assoc_["LOG10P"])
+    #         for _, null_assoc_ in null_assoc_group
+    #     ]
         
-        for future in futures:
-            result = future.result()
-            if result is not None and np.max(result) > 0.001:
-                null_assoc_tfce.append(np.max(result))
+    #     for future in futures:
+    #         result = future.result()
+    #         if result is not None and np.max(result) > 0.001:
+    #             null_assoc_tfce.append(np.max(result))
+
+    null_assoc_tfce = [
+        np.max(tfce.tfce(null_assoc_["INDEX"], null_assoc_["LOG10P"])[0][tfce.slices])
+        for _, null_assoc_ in null_assoc_group
+    ]
+    null_assoc_tfce = np.array(null_assoc_tfce)
+    null_assoc_tfce = null_assoc_tfce[null_assoc_tfce > 0.001]
 
     return np.sort(null_assoc_tfce)
         
@@ -307,6 +372,9 @@ def check_input(args, log):
         raise ValueError("--coord-dir is required")
     else:
         ds.check_existence(args.coord_dir)
+    if args.sig_thresh is None:
+        args.sig_thresh = 2.5e-06
+        log.info("Set significance threshold as 2.5e-06")
 
     if args.results_idx is None and args.null_assoc is None:
         raise ValueError("--result-idx or --null-assoc is required")
@@ -318,14 +386,11 @@ def check_input(args, log):
         if args.tfce_quantile_level is None:
             args.tfce_quantile_level = 0
             log.info("Set TFCE quantile level as 0")
+        if args.sig_thresh2 is None:
+            args.sig_thresh2 = args.sig_thresh
+            log.info(f"Set significance threshold of top voxels as {args.sig_thresh2}")
     if args.null_assoc is not None:
         ds.check_existence(args.null_assoc)
-    if args.sig_thresh is None:
-        args.sig_thresh = 2.5e-6
-        log.info("Set significance threshold as 2.5e-6")
-    if args.sig_thresh2 is None:
-        args.sig_thresh2 = args.sig_thresh
-        log.info(f"Set significance threshold as {args.sig_thresh}")
 
 
 def run(args, log):
@@ -375,6 +440,7 @@ def run(args, log):
         all_null_assoc_results = dict()
         all_cmac_bin_count = dict()
         for cmac_bin, null_assoc_bin in null_assoc_by_cmac_bin:
+            log.info(f"cMAC bin: {cmac_bin}")
             null_assoc_results = summarize_null_results(
                 tfce,
                 null_assoc_bin,
