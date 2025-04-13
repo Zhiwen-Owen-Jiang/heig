@@ -24,13 +24,12 @@ class GeneralAnnotation:
         self.annot = annot
         self.annot_cols = annot_cols
 
-    def parse_annot(self, idx=None, use_annot_weights=False):
+    def parse_annot(self, use_annot_weights=False):
         """
         Parsing annotations, maf, and is_rare from locus
 
         Parameters:
         ------------
-        idx: a hail.expr of boolean indices to extract variants
         use_annot_weights: boolean, using annotation weights
 
         Returns:
@@ -39,10 +38,7 @@ class GeneralAnnotation:
         annot: a np.array of annotations
 
         """
-        if idx is not None:
-            filtered_annot = self.annot.filter(idx)
-        else:
-            filtered_annot = self.annot
+        filtered_annot = self.annot
         numeric_idx = filtered_annot.idx.collect()
         if len(numeric_idx) <= 1:
             return numeric_idx, None
@@ -178,7 +174,6 @@ def vset_analysis(
 
     """
     annot_locus = rv_sumstats.annotate(annot)
-    # annot_locus = annot_locus.cache() # TODO: check this
 
     if window_length is None:
         for _, gene in variant_sets.iterrows():
@@ -212,7 +207,6 @@ def vset_analysis(
                     f"({vset_test.n_variants} variants, {cmac} alleles) ..."
                 )
             )
-            pvalues = vset_test.do_inference(general_annot.annot_cols)
             pvalues, burden_test = vset_test.do_inference_tests(
                 tests, general_annot.annot_cols
             )
