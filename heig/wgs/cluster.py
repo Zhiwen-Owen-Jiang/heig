@@ -245,8 +245,8 @@ def check_input(args, log):
         args.sig_thresh = 0.00001
         log.info("Set significance threshold as 0.00001")
     if args.n_bootstrap is None:
-        args.n_bootstrap = 50
-        log.info("Set #bootstrap as 50")
+        args.n_bootstrap = 10
+        log.info("Set #bootstrap as 10")
 
 
 def run(args, log):
