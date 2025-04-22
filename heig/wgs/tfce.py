@@ -386,6 +386,8 @@ def check_input(args, log):
         if args.tfce_quantile_level is None:
             args.tfce_quantile_level = 0
             log.info("Set TFCE quantile level as 0")
+        elif args.tfce_quantile_level > 0 and args.tfce_null is None:
+            raise ValueError("--tfce-null is required if --tfce-quantile-level is not 0")
         if args.sig_thresh2 is None:
             args.sig_thresh2 = args.sig_thresh
             log.info(f"Set significance threshold of top voxels as {args.sig_thresh2}")
