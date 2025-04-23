@@ -7,6 +7,7 @@ import heig.input.dataset as ds
 from heig.wgs.relatedness import LOCOpreds
 from heig.wgs.null import NullModel
 from heig.wgs.coding import Coding
+from heig.wgs.slidingwindow import GeneralAnnotation
 from heig.wgs.mt import SparseGenotype
 from heig.wgs.vsettest import VariantSetTest
 from heig.wgs.null import fit_null_model
@@ -18,9 +19,6 @@ from heig.wgs.utils import *
 """
 Conditional analysis for a single variant set
 user provides a list of SNPs to adjust for, prune by LD < 0.3
-
-TODO
-1. allow for customized annot
 
 """
 
@@ -67,7 +65,18 @@ TODO
 #     return half_ldr_score_cond, cov_mat_cond, cov_cond
 
 
-def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, use_annot_weights, log):
+def parse_gene(
+        locus, 
+        gene, 
+        gene_interval, 
+        variant_category, 
+        vset, 
+        maf, 
+        mac, 
+        use_annot_weights, 
+        annot_cols, 
+        log
+    ):
     """
     Extracting genotype for the gene
     
@@ -83,7 +92,11 @@ def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, use
         raise ValueError('less than two variants in the gene')
     chr, start, end = get_interval(variant_set_locus)
     
-    if variant_category in {
+    if variant_category is None:
+        general_annot = GeneralAnnotation(variant_set_locus, annot_cols)
+        numeric_idx, phred_cate = general_annot.parse_annot(use_annot_weights)
+        annot_name = annot_cols
+    elif variant_category in {
         "plof",
         "plof_ds",
         "missense",
@@ -95,15 +108,16 @@ def parse_gene(locus, gene, gene_interval, variant_category, vset, maf, mac, use
         coding = Coding(variant_set_locus, variant_type)
         mask_idx = coding.category_dict[variant_category]
         numeric_idx, phred_cate = coding.parse_annot(mask_idx, use_annot_weights)
+        annot_name = coding.annot_name
     else:
         raise ValueError(f"{variant_category} is invalid")
 
     vset = vset[numeric_idx]
     maf = maf[numeric_idx]
     mac = mac[numeric_idx]
-    log.info(f"{len(numeric_idx)} variants ({np.sum(mac)} alleles) for {variant_category}.")
+    log.info(f"{len(numeric_idx)} variants ({np.sum(mac)} alleles) in the gene.")
 
-    return vset, maf, mac, phred_cate, coding.annot_name, chr, start, end 
+    return vset, maf, mac, phred_cate, annot_name, chr, start, end 
 
 
 def adjust_cond(resid_ldr, covar, bases, vset, chr, loco_preds):
@@ -143,8 +157,6 @@ def adjust_cond(resid_ldr, covar, bases, vset, chr, loco_preds):
 def check_input(args, log):
     if args.spark_conf is None:
         raise ValueError("--spark-conf is required")
-    # if args.annot_ht is None:
-    #     raise ValueError("--annot-ht (FAVOR annotation) is required")
     if args.null_model is None:
         raise ValueError("--null-model is required")
     if args.sparse_genotype is None:
@@ -153,46 +165,18 @@ def check_input(args, log):
         raise ValueError("--geno-mt is required")
     if args.perm is None:
         raise ValueError("--perm is required")
-    # if args.variant_sets is None:
-    #     raise ValueError("--variant-sets is required")
-    # log.info(f"{args.variant_sets.shape[0]} gene(s) in --variant-sets.")
-    # if args.variant_category is None:
-    #     raise ValueError("--variant-category is required")
     
     if args.rv_tests is None:
         args.rv_tests = ["staar"]
-
-    # args.variant_category = args.variant_category.lower()
-    # if args.variant_category not in {
-    #     "plof",
-    #     "plof_ds",
-    #     "missense",
-    #     "disruptive_missense",
-    #     "synonymous",
-    #     "ptv",
-    #     "ptv_ds",
-    #     }:
-    #     raise ValueError(f"invalid variant category: {args.variant_category}")
-    # if args.staar_only:
-    #     log.info("Saving STAAR-O results only.")
-
     if args.mac_thresh is None:
         args.mac_thresh = 10
         log.info(f"Set --mac-thresh as default 10")
     elif args.mac_thresh < 0:
         raise ValueError("--mac-thresh must be greater than 0")
-    
-    # if args.maf_min is None:
-    #     args.maf_min = 0
-    #     log.info(f"Set --maf-min as default 0")
-
     if args.chr_interval_cond is not None:
         args.chr_interval_cond = args.chr_interval_cond.split(',')
     else:
         args.chr_interval_cond = []
-    
-    if args.variant_category is None:
-        args.variant_category = 'gene'
 
 
 def run(args, log):
@@ -256,8 +240,6 @@ def run(args, log):
         )
         for chr_interval_cond in args.chr_interval_cond:
             gprocessor.extract_chr_interval(chr_interval_cond)
-        # gprocessor.extract_chr_interval(args.chr_interval_cond)
-        # gprocessor.do_processing('gwas')
 
         # extract common subjects and align data
         snp_mt_ids = np.array(gprocessor.subject_id(), dtype=str)
@@ -321,7 +303,7 @@ def run(args, log):
                 vset, maf, mac, phred_cate, annot_name, chr, start, end 
             ) = parse_gene(
                 locus, gene_name, gene_interval, args.variant_category, 
-                vset, maf, mac, args.use_annot_weights, log
+                vset, maf, mac, args.use_annot_weights, args.annot_cols, log
             )
         else:
             chr, start, end = get_interval(locus)
