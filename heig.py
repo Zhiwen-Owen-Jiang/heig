@@ -518,7 +518,7 @@ common_parser.add_argument(
     "--annot-cols",
     help=(
         "Annotation columns. Multiple columns are separated by comma. "
-        "Supported modules: --rv-annot, --rv."
+        "Supported modules: --rv-annot, --rv, --rv-cond."
     ),
 )
 common_parser.add_argument(
@@ -590,10 +590,10 @@ common_parser.add_argument(
     )
 )
 common_parser.add_argument(
-    "--n-bootstrap", "--n-samples",
+    "--n-bootstrap", "--n-points",
     type=float,
     help=(
-        "Number of bootstrap/permutation samples. "
+        "Number of bootstrap samples or number of points in a null distribution. "
         "Supported modules: --cluster, --rv-cluster."
     )
 )
@@ -778,8 +778,8 @@ sumstats_parser.add_argument(
     "--ldr-gwas-heig",
     help=(
         "Directory to raw LDR GWAS summary statistics files produced by --gwas. "
-        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.txt.bgz`. "
-        "One file may contain multiple LDRs. These files must be in order."
+        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.parquet`. "
+        "One file may contain multiple LDRs. LDRs in these files must be in order."
     ),
 )
 sumstats_parser.add_argument(
@@ -1201,7 +1201,10 @@ def check_accepted_args(module, args, log):
             "grch37",
             "favor_annot",
             "general_annot",
-            "annot_cols"
+            "annot_cols",
+            "extract_locus",
+            "exclude_locus",
+            "chr_interval"
         },
         "rv_coding":{
             "rv_coding",
@@ -1375,6 +1378,7 @@ def check_accepted_args(module, args, log):
             "chr_interval_cond",
             "loco_preds",
             "annot_ht",
+            "annot_cols",
             "variant_sets",
             "variant_category",
             "geno_mt",
@@ -1485,6 +1489,7 @@ def process_args(args, log):
     ds.check_existence(args.spark_conf)
     ds.check_existence(args.loco_preds)
     ds.check_existence(args.geno_mt)
+    ds.check_existence(args.null_model)
     ds.check_existence(args.rv_sumstats_part1, "_rv_sumstats.h5")
     ds.check_existence(args.rv_sumstats_part2, "_data.h5")
     ds.check_existence(args.rv_sumstats_part2, "_locus_info.ht")
@@ -1556,8 +1561,8 @@ def process_args(args, log):
     if args.sig_thresh is not None:
         if args.sig_thresh <= 0 or args.sig_thresh >= 1:
             raise ValueError("--sig-thresh should be greater than 0 and less than 1")
-        else:
-            log.info(f"Saving results with a p-value less than {args.sig_thresh}")
+        # else:
+        #     log.info(f"Saving results with a p-value less than {args.sig_thresh}")
 
     if args.maf_min is not None:
         if args.maf_min >= 0.5 or args.maf_min < 0:
