@@ -38,7 +38,7 @@ class CommonSNPs:
 
     """
 
-    def __init__(self, *snp_list, exclude_snps, threads):
+    def __init__(self, *snp_list, exclude_snps, threads, match_alleles=True):
         """
         Parameters:
         ------------
@@ -52,11 +52,12 @@ class CommonSNPs:
 
         """
         self.snp_list = snp_list
-        common_snps = self._merge_snp_list()
+        self.common_snps = self._merge_snp_list()
         if exclude_snps is not None:
-            common_snps = common_snps[~(common_snps["SNP"].isin(exclude_snps["SNP"]))]
-        matched_alleles_set = self._match_alleles(common_snps, threads)
-        self.common_snps = common_snps.loc[matched_alleles_set, "SNP"]
+            self.common_snps = self.common_snps[~(self.common_snps["SNP"].isin(exclude_snps["SNP"]))]
+        if match_alleles:
+            matched_alleles_set = self._match_alleles(self.common_snps, threads)
+            self.common_snps = self.common_snps.loc[matched_alleles_set, "SNP"]
 
     def _merge_snp_list(self):
         """

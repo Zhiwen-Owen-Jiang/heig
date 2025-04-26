@@ -11,7 +11,7 @@ from heig.utils import GetLogger, sec_to_str
 # os.environ['NUMEXPR_MAX_THREADS'] = '8'
 # numexpr.set_num_threads(int(os.environ['NUMEXPR_MAX_THREADS']))
 
-VERSION = "1.3.0"
+VERSION = "1.4.0-alpha"
 MASTHEAD = (
     "******************************************************************************\n"
 )
@@ -50,6 +50,9 @@ voxelgwas_parser = parser.add_argument_group(
 )
 gwas_parser = parser.add_argument_group(
     title="Arguments specific to doing genome-wide association analysis"
+)
+partition_h2_parser = parser.add_argument_group(
+    title="Arguments specific to partitioning heritability"
 )
 relatedness_parser = parser.add_argument_group(
     title="Arguments specific to removing genetic relatedness in LDRs"
@@ -117,6 +120,9 @@ voxelgwas_parser.add_argument(
 )
 gwas_parser.add_argument(
     "--gwas", action="store_true", help="Genome-wide association analysis."
+)
+partition_h2_parser.add_argument(
+    "--partition-h2", action="store_true", help="Partitioning heritability."
 )
 relatedness_parser.add_argument(
     "--relatedness", action="store_true", help="Removing genetic relatedness in LDRs."
@@ -818,6 +824,10 @@ sumstats_parser.add_argument(
 
 # arguments for voxelgwas.py
 
+# arguments for partition_h2.py
+partition_h2_parser.add_argument("--ref-ld-chr", help="Reference LD scores used as predictors.")
+partition_h2_parser.add_argument("--w-ld-chr", help="LD scores used as weights.")
+
 # arguments for relatedness.py
 relatedness_parser.add_argument(
     "--bsize", type=int, help="Block size of genotype blocks. Default: 5000."
@@ -1103,6 +1113,21 @@ def check_accepted_args(module, args, log):
             "cat_covar_list",
             "loco_preds",
             "spark_conf",
+        },
+        "partition_h2": {
+            "partition_h2",
+            "out",
+            "ref_ld_chr",
+            "w_ld_chr",
+            "extract",
+            "exclude",
+            "bases",
+            "n_ldrs",
+            "voxels",
+            "ldr_sumstats",
+            "ldr_cov",
+            "bases",
+            "threads",
         },
         "relatedness": {
             "relatedness",
@@ -1624,6 +1649,7 @@ def main(args, log):
         + args.sumstats
         + args.voxel_gwas
         + args.gwas
+        + args.partition_h2
         + args.relatedness
         + args.make_mt
         + args.make_rv_sumstats
@@ -1644,9 +1670,9 @@ def main(args, log):
             (
                 "must raise one and only one of following module flags: "
                 "--read-image, --fpca, --make-ldr, --heri-gc, --ld-matrix, --sumstats, "
-                "--voxel-gwas, --gwas, --relatedness, --make-mt, --rv-null, --make-rv-sumstats, "
-                "--rv-annot, --rv-coding, --rv-noncoding, --rv, --cluster, --rv-cluster, "
-                "--rv-cond, --rv-single, --tfce, --permute"
+                "--voxel-gwas, --gwas, --partition-h2, --relatedness, --make-mt, --rv-null, "
+                "--make-rv-sumstats, --rv-annot, --rv-coding, --rv-noncoding, --rv, "
+                "--cluster, --rv-cluster, --rv-cond, --rv-single, --tfce, --permute"
             )
         )
 
@@ -1674,6 +1700,9 @@ def main(args, log):
     elif args.gwas:
         check_accepted_args('gwas', args, log)
         import heig.wgs.gwas as module
+    elif args.partition_h2:
+        check_accepted_args('partition_h2', args, log)
+        import heig.partition_h2 as module
     elif args.relatedness:
         check_accepted_args('relatedness', args, log)
         import heig.wgs.relatedness as module

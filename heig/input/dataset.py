@@ -2,7 +2,6 @@ import sys
 import os
 import re
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import numpy as np
 from heig import utils
@@ -650,37 +649,6 @@ def check_existence(arg, suffix=""):
         raise FileNotFoundError(f"{arg}{suffix} does not exist")
 
 
-# class ReadCsvParallel:
-#     def __init__(self, filename, threads):
-#         self.filename = filename
-#         self.threads = threads
-#         self.chunksize = 100000
-
-#     @staticmethod
-#     def _identity(chunk):
-#         return chunk
-
-#     def read_csv_parallel(self, processing_chunk=None, **kwargs):
-#         """
-#         Reading a CSV file in parallel and applies a processing function to each chunk.
-
-#         """
-#         if processing_chunk is None:
-#             processing_chunk = self._identity
-
-#         processed_chunks = []
-#         with ThreadPoolExecutor(max_workers=self.threads) as executor:
-#             futures = []
-
-#             for chunk in pd.read_csv(self.filename, chunksize=self.chunksize, **kwargs):
-#                 futures.append(executor.submit(processing_chunk, chunk))
-
-#             for future in futures:
-#                 processed_chunks.append(future.result())
-
-#         return pd.concat(processed_chunks, ignore_index=True)
-
-
 def read_variant_sets(file):
     variant_sets = pd.read_csv(file, sep="\s+", header=None)
     try:
@@ -692,3 +660,60 @@ def read_variant_sets(file):
         raise ValueError("variant sets should be in format `chr:start-end`")
 
     return variant_sets
+
+
+def read_ld(prefix, read_name=False):
+    """
+    Read LD scores by chr; can read reference LD or regression LD
+    
+    """
+    ref_ld = list()
+    for i in range(1, 23):
+        ref_ld_chr = pd.read_csv(f"{prefix}{i}.l2.ldscore.gz", sep="\t", compression="gzip")
+        del ref_ld_chr["CHR"]
+        del ref_ld_chr["BP"]
+        ref_ld.append(ref_ld)
+    ref_ld = pd.concat(ref_ld)
+    if read_name:
+        annot_names = list(ref_ld.columns)
+    else:
+        annot_names
+    return ref_ld, annot_names
+
+
+def read_M(prefix, common=True):
+    """
+    Read number of variants for each LDR
+    
+    """
+    M = list()
+    for i in range(1, 23):
+        if common:
+            M_chr = np.loadtxt(f"{prefix}{i}.l2.M_5_50")
+        else:
+            M_chr = np.loadtxt(f"{prefix}{i}.l2.M")
+        M.append(M_chr)
+    M = np.array(M).sum(axis=0)
+
+    return M
+
+
+def read_ld_annot(prefix):
+    """
+    Read binary LD annotation matrix
+    
+    """
+    overlap_matrix = list()
+    M_tot = 0
+
+    for i in range(1, 23):
+        overlap_matrix_chr = pd.read_csv(
+            f"{prefix}{i}.annot.gz", sep="\t", compression="gzip"
+        )
+        overlap_matrix_chr = overlap_matrix_chr.iloc[:, 3:]
+        overlap_matrix.append(overlap_matrix_chr)
+        M_tot += overlap_matrix_chr.shape[0]
+    overlap_matrix = pd.concat(overlap_matrix)
+    overlap_matrix = overlap_matrix.values
+    
+    return overlap_matrix, M_tot
