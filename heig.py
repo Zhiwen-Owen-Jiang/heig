@@ -827,6 +827,7 @@ sumstats_parser.add_argument(
 # arguments for partition_h2.py
 partition_h2_parser.add_argument("--ref-ld-chr", help="Reference LD scores used as predictors.")
 partition_h2_parser.add_argument("--w-ld-chr", help="LD scores used as weights.")
+partition_h2_parser.add_argument("--frqfile-chr", help="MAF of reference SNPs.")
 
 # arguments for relatedness.py
 relatedness_parser.add_argument(
@@ -1119,6 +1120,7 @@ def check_accepted_args(module, args, log):
             "out",
             "ref_ld_chr",
             "w_ld_chr",
+            "frqfile_chr",
             "extract",
             "exclude",
             "bases",

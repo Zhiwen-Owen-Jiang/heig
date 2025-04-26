@@ -58,6 +58,8 @@ class CommonSNPs:
         if match_alleles:
             matched_alleles_set = self._match_alleles(self.common_snps, threads)
             self.common_snps = self.common_snps.loc[matched_alleles_set, "SNP"]
+        else:
+            self.common_snps = self.common_snps[["SNP"]]
 
     def _merge_snp_list(self):
         """

@@ -46,7 +46,7 @@ class PartitionHeritability:
         self.overlap_matrix = overlap_matrix
         self.annot_names = annot_names
         self.M_annot = M_annot
-        self.M_tot = M_annot.sum()
+        self.M_tot = np.sum(M_annot)
         self.overlap_matrix_prop = overlap_matrix / M_annot
         self.overlap_matrix_diff = self._get_overlap_matrix_diff()
 
@@ -68,12 +68,13 @@ class PartitionHeritability:
         return blocks
     
     def _get_overlap_matrix_diff(self):
+        M_tot = self.M_annot[0]
         overlap_matrix_diff = np.zeros((self.n_annot, self.n_annot))
         for i in range(self.n_annot):
-            if self.M_tot != self.M_annot[i]: 
+            if M_tot != self.M_annot[i]: 
                 overlap_matrix_diff[i] = (
                     self.overlap_matrix[i] / self.M_annot[i] -
-                    (self.M_annot - self.overlap_matrix[i]) / (self.M_tot - self.M_annot[i])
+                    (self.M_annot - self.overlap_matrix[i]) / (M_tot - self.M_annot[i])
                 )
         return overlap_matrix_diff
         
@@ -82,9 +83,9 @@ class PartitionHeritability:
         Initialize weights for each annotation
 
         """
-        x_tot = np.sum(self.ref_ld, axis=1)
+        x_tot = np.sum(self.ref_ld, axis=1).reshape(-1, 1)
         x_tot[x_tot < 1] = 1
-        hsq = 0.15
+        hsq = 0.18884230401681382
         w_ld = self.w_ld.copy()
         w_ld[w_ld < 1] = 1
         c = hsq * self.ldr_n / self.M_tot
@@ -117,14 +118,16 @@ class PartitionHeritability:
 
         Parameters:
         ------------
-        y (n_snp, n_voxels): np.array of chisq statistics
+        y (n_snp,): np.array of chisq statistics
         voxel_idx: one-based index of the voxel
 
         """
+        # self.n_voxels = y.shape[1]
+        y = y.flatten()
         self.Xwy_blocks = self._block_Xwy(y)
-        self.XwX, self.Xwy, total_coef = self._total_coef()
+        self.XwX, self.Xwy, self.total_coef = self._total_coef()
         lobo_coef = self._lobo_coef()
-        jknife_est, jknife_var, jknife_se, jknife_cov = self._jackknife(total_coef, lobo_coef)
+        jknife_est, jknife_var, jknife_se, jknife_cov = self._jackknife(self.total_coef, lobo_coef)
         
         self.jknife_est = jknife_est
         self.jknife_var = jknife_var
@@ -146,6 +149,7 @@ class PartitionHeritability:
         get Xwy for each block
 
         """
+        # Xwy_blocks = np.zeros((self.n_blocks, self.n_coef, self.n_voxels))
         Xwy_blocks = np.zeros((self.n_blocks, self.n_coef))
         for i, (start, end) in enumerate(self.blocks):
             Xwy_blocks[i] = np.dot(self.ref_ld[start:end].T, y[start:end])
@@ -157,6 +161,7 @@ class PartitionHeritability:
         return XwX, Xwy, np.dot(inv(XwX), Xwy)
     
     def _lobo_coef(self):
+        # lobo_coef = np.zeros((self.n_blocks, self.n_coef, self.n_voxels))
         lobo_coef = np.zeros((self.n_blocks, self.n_coef))
         for i in range(self.n_blocks):
             XwX_i = self.XwX - self.XwX_blocks[i]
@@ -175,6 +180,13 @@ class PartitionHeritability:
 
         """
         pseudovalues = self.n_blocks * total - (self.n_blocks - 1) * lobo
+        # jknife_cov = np.zeros((self.n_coef, self.n_coef, self.n_voxels))
+        # jknife_var = np.zeros((self.n_coef, self.n_voxels))
+
+        # for i in range(self.n_voxels):
+        #     pseudovalues_i = pseudovalues[:, :, i]
+        #     jknife_cov[:, :, i] = np.cov(pseudovalues_i.T, ddof=1) / self.n_blocks
+        #     jknife_var[:, i] = np.diag(jknife_cov[:, :, i])
         jknife_cov = np.atleast_2d(np.cov(pseudovalues.T, ddof=1) / self.n_blocks)
         jknife_var = np.atleast_2d(np.diag(jknife_cov))
         jknife_se = np.atleast_2d(np.sqrt(jknife_var))
@@ -182,14 +194,15 @@ class PartitionHeritability:
         return (jknife_est, jknife_var, jknife_se, jknife_cov)
     
     def _coef(self):
-        coef = self.jknife_est[0, 0:-1] / self.Nbar
-        coef_cov = self.jknife_cov[0:-1, 0:-1] / self.Nbar ** 2
-        coef_se = np.sqrt(np.diag(coef_cov))
+        coef = self.total_coef[0:-1]
+        coef_cov = self.jknife_cov[0:-1, 0:-1]
+        coef_se = np.sqrt(np.diag(coef_cov)) / self.Nbar 
         return coef, coef_cov, coef_se
     
     def _cat(self):
-        cat = self.M_annot * self.coef
-        cat_cov = np.dot(self.M_annot.T, self.M_annot) * self.coef_cov
+        cat = self.M_annot / self.Nbar * self.coef
+        M_annot = (self.M_annot / self.Nbar).reshape(1, -1)
+        cat_cov = np.dot(M_annot.T, M_annot) * self.coef_cov
         cat_se = np.sqrt(np.diag(cat_cov))
         return cat, cat_cov, cat_se
     
@@ -203,7 +216,7 @@ class PartitionHeritability:
         lobo = lobo[:, 0:-1]
         numer_delete_vals = self.M_annot * lobo / self.Nbar
         denom_delete_vals = np.sum(numer_delete_vals, axis=1).reshape(-1, 1)
-        denom_delete_vals = np.dot(denom_delete_vals, np.ones(1, self.n_annot))
+        denom_delete_vals = np.dot(denom_delete_vals, np.ones((1, self.n_annot)))
         prop = self.cat / self.tot
 
         pseudovalues = self.n_blocks * prop - (self.n_blocks - 1) * numer_delete_vals / denom_delete_vals
@@ -211,7 +224,7 @@ class PartitionHeritability:
         jknife_var = np.atleast_2d(np.diag(jknife_cov))
         jknife_se = np.atleast_2d(np.sqrt(jknife_var))
         jknife_est = np.atleast_2d(np.mean(pseudovalues, axis=0))
-        return jknife_est, jknife_cov, jknife_se
+        return prop, jknife_cov, jknife_se
 
     def _enrichment(self):
         M_prop = self.M_annot / self.M_tot
@@ -224,29 +237,35 @@ class PartitionHeritability:
         return intercept, intercept_se
 
     def _overlap_output(self, voxel_idx):
+        M_tot = self.M_annot[0]
         prop_hsq_overlap = np.dot(self.overlap_matrix_prop, self.prop.T)
         prop_hsq_overlap_var = np.sum(np.dot(self.overlap_matrix_prop, self.prop_cov) * self.overlap_matrix_prop, axis=1)
-        prop_hsq_overlap_var[prop_hsq_overlap_var < 0] = 0
+        prop_hsq_overlap_var[prop_hsq_overlap_var <= 0] = 1e-10
         prop_hsq_overlap_se = np.sqrt(prop_hsq_overlap_var)
 
-        prop_M_overlap = self.M_annot / self.M_tot
+        prop_M_overlap = self.M_annot / M_tot
         enrichment = prop_hsq_overlap / prop_M_overlap
         enrichment_se = prop_hsq_overlap_se / prop_M_overlap
 
         diff_est = np.dot(self.overlap_matrix_diff, self.coef)
-        diff_var = np.sum(np.dot(self.overlap_matrix_diff, self.coef_cov) * self.overlap_matrix_diff.T, axis=1)
+        diff_var = np.sum(np.dot(self.overlap_matrix_diff, self.coef_cov) * self.overlap_matrix_diff, axis=1)
         diff_se = np.sqrt(diff_var)
+        diff_se[diff_se <= 0] = 1e-10
         diff_p = 2 * t.sf(abs(diff_est / diff_se), self.n_blocks) # TODO: se == 0
 
+        self.coef = self.coef / self.Nbar
+
         df = pd.DataFrame({
-            "Index": voxel_idx,
+            "Index": voxel_idx[0],
             "Category": self.annot_names,
             "Prop_SNPs": prop_M_overlap,
             "Prop_h2": prop_hsq_overlap,
             "Prop_h2_se": prop_hsq_overlap_se,
             "Enrichment": enrichment,
             "Enrichment_se": enrichment_se,
-            "Enrichment_p": diff_p
+            "Enrichment_p": diff_p,
+            "Coefficient": self.coef,
+            "Coefficient_se": self.coef_se, 
         })
 
         return df
@@ -264,6 +283,8 @@ def check_input(args, log):
         raise ValueError("--ref-ld-chr is required")
     if args.w_ld_chr is None:
         raise ValueError("--w-ld-chr is required")
+    if args.frqfile_chr is None:
+        raise ValueError("--frqfile-chr is required")
 
 
 def run(args, log):
@@ -284,7 +305,10 @@ def run(args, log):
         
         ref_ld, annot_names = ds.read_ld(args.ref_ld_chr, read_name=True)
         log.info(
-            f"{ref_ld.shape[0]} SNPs read from reference panel {args.ref_ld_chr}"
+            (
+                f"{ref_ld.shape[0]} SNPs and {len(annot_names)} annotations "
+                f"read from reference panel {args.ref_ld_chr}"
+            )
         )
 
         w_ld, _ = ds.read_ld(args.w_ld_chr, read_name=False)
@@ -304,20 +328,22 @@ def run(args, log):
         )
         log.info(
             (
-                f"{len(common_snps.common_snps)} SNPs common in these files with identical alleles. "
+                f"{len(common_snps.common_snps)} SNPs common in these files. "
                 "Extracting them from each file ..."
             )
         )
 
-        ldr_sumstats.extract_snps(common_snps.common_snps)
-        ref_ld = common_snps.common_snps.merge(ref_ld, on="SNP")
-        w_ld = common_snps.common_snps.merge(w_ld, on="SNP")
+        # ldr_sumstats.extract_snps(common_snps.common_snps)
+        ref_ld = common_snps.common_snps.merge(ref_ld, on="SNP").iloc[:, 1:].values
+        w_ld = common_snps.common_snps.merge(w_ld, on="SNP").iloc[:, 1:].values
 
         # read overlap matrix
-        overlap_matrix, M_annot = ds.read_ld_annot(args.ref_ld_chr)
-        log.info(
-            f"Read overlap matrix from {args.ref_ld_chr}"
-        )
+        # overlap_matrix = ds.read_ld_annot(args.ref_ld_chr, args.frqfile_chr)
+        # log.info(
+        #     f"Read overlap matrix from {args.ref_ld_chr}"
+        # )
+        overlap_matrix = np.load('/work/users/o/w/owenjf/image_genetics/methods/package_pub/test_output/partition_h2/overlap_matrix.npy')
+        M_annot = overlap_matrix[0]
 
         # keep selected LDRs
         if args.n_ldrs is not None:
@@ -344,15 +370,14 @@ def run(args, log):
         else:
             args.voxels = np.arange(bases.shape[0])
 
-        # initialize partition heritability
+        # doing analysis
+        log.info(f"Partitioning heritability ...")
+        snp_idxs = ldr_sumstats.snpinfo["SNP"].isin(common_snps.common_snps["SNP"]).to_numpy()
+        # snp_idxs = ldr_sumstats.snp_idxs
+        ldr_n = np.array(ldr_sumstats.snpinfo["N"][snp_idxs]).reshape(-1, 1)
         partition_h2 = PartitionHeritability(
             ref_ld, w_ld, ldr_n, overlap_matrix, M_annot, annot_names
         )
-
-        # doing analysis
-        log.info(f"Partitioning heritability ...")
-        snp_idxs = ~ldr_sumstats.snpinfo["SNP"].isna().to_numpy()
-        ldr_n = np.array(ldr_sumstats.snpinfo["N"]).reshape(-1, 1)
         vgwas = VGWAS(bases, ldr_cov, ldr_sumstats, snp_idxs, ldr_n, args.threads)
 
         all_df = []
@@ -363,22 +388,31 @@ def run(args, log):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
             voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
             voxel_chisq = (voxel_beta / voxel_se) ** 2
-            voxel_df = partition_h2.run(voxel_chisq)
+            voxel_df = partition_h2.run(voxel_chisq, voxel_idxs+1)
             all_df.append(voxel_df)
 
         all_df = pd.concat(all_df, ignore_index=True)
-        for _, annot_df in all_df.groupby("Category"):
-            annot_df = annot_df.drop(columns=["Category"])
-            annot_df.to_csv(
-                f"{args.out}_partition_h2_{annot_df.iloc[0]['Category']}.txt",
+        all_df.to_csv(
+                f"{args.out}_partition_h2.txt",
                 index=False,
                 sep="\t",
                 header=True,
                 float_format="%.5e",
             )
-        log.info(
-            f"Output partition heritability for to {args.out}"
-        ) # TODO: think of saving in a folder
+        log.info(f"Saved partition heritability to {args.out}_partition_h2.txt")
+        
+        # for _, annot_df in all_df.groupby("Category"):
+        #     annot_df = annot_df.drop(columns=["Category"])
+        #     annot_df.to_csv(
+        #         f"{args.out}_partition_h2_{annot_df.iloc[0]['Category']}.txt",
+        #         index=False,
+        #         sep="\t",
+        #         header=True,
+        #         float_format="%.5e",
+        #     )
+        # log.info(
+        #     f"Output partition heritability for to {args.out}"
+        # ) # TODO: think of saving in a folder
 
     finally:
         if "ldr_sumstats" in locals():

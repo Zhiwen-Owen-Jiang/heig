@@ -4,6 +4,7 @@ import re
 import logging
 import pandas as pd
 import numpy as np
+from scipy.sparse import csc_matrix
 from heig import utils
 
 
@@ -672,12 +673,12 @@ def read_ld(prefix, read_name=False):
         ref_ld_chr = pd.read_csv(f"{prefix}{i}.l2.ldscore.gz", sep="\t", compression="gzip")
         del ref_ld_chr["CHR"]
         del ref_ld_chr["BP"]
-        ref_ld.append(ref_ld)
+        ref_ld.append(ref_ld_chr)
     ref_ld = pd.concat(ref_ld)
     if read_name:
-        annot_names = list(ref_ld.columns)
+        annot_names = list(ref_ld.columns[1:])
     else:
-        annot_names
+        annot_names = None
     return ref_ld, annot_names
 
 
@@ -698,22 +699,35 @@ def read_M(prefix, common=True):
     return M
 
 
-def read_ld_annot(prefix):
+def read_ld_annot(prefix, frqfile_prefix):
     """
     Read binary LD annotation matrix
     
     """
     overlap_matrix = list()
-    M_tot = 0
+    # M_tot = 0
 
     for i in range(1, 23):
         overlap_matrix_chr = pd.read_csv(
             f"{prefix}{i}.annot.gz", sep="\t", compression="gzip"
-        )
-        overlap_matrix_chr = overlap_matrix_chr.iloc[:, 3:]
-        overlap_matrix.append(overlap_matrix_chr)
-        M_tot += overlap_matrix_chr.shape[0]
-    overlap_matrix = pd.concat(overlap_matrix)
-    overlap_matrix = overlap_matrix.values
+        ).iloc[:, 4:].values
+        frq_chr = pd.read_csv(
+            f"{frqfile_prefix}{i}.frq", sep="\s+", usecols=["MAF"]
+        ).values.flatten()
+        if len(overlap_matrix_chr) != len(frq_chr):
+            raise ValueError(
+                (
+                    f"the number of variants in {prefix}{i}.annot.gz "
+                    f"and {frqfile_prefix}{i}.frq do not match"
+                )
+            )
+        overlap_matrix_chr = overlap_matrix_chr[
+            (frq_chr > 0.05) & (frq_chr < 0.95)
+        ]
+        # M_tot += overlap_matrix_chr.shape[0]
+        overlap_matrix_chr = csc_matrix(overlap_matrix_chr)
+        overlap_matrix_chr = overlap_matrix_chr.T @ overlap_matrix_chr
+        overlap_matrix.append(overlap_matrix_chr.toarray())
+    overlap_matrix = np.sum(np.array(overlap_matrix), axis=0)
     
-    return overlap_matrix, M_tot
+    return overlap_matrix
