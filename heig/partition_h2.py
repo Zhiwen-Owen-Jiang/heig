@@ -6,8 +6,10 @@ from heig.sumstats import read_sumstats
 from heig.voxelgwas import VGWAS, voxel_reader
 from heig.herigc import CommonSNPs
 import heig.input.dataset as ds
-from heig.utils import inv
 
+from numba import float64, int64
+from numba.experimental import jitclass
+from numba import njit, prange
 
 """
 Partition h2 for each voxel in an image
@@ -20,7 +22,45 @@ Only binary annotations are allowed
 
 """
 
+spec = [
+    ("ref_ld", float64[:, :]),
+    ("w_ld", float64[:, :]),
+    ("ldr_n", int64[:, :]),
+    ("Nbar", float64),
+    ("blocks", int64[:, :]),
+    ("n_blocks", int64),
+    ("n_annot", int64),
+    ("n_coef", int64),
+    ("overlap_matrix", int64[:, :]),
+    ("M_annot", int64[:]),
+    ("M_tot", float64),
+    ("overlap_matrix_prop", float64[:, :]),
+    ("overlap_matrix_diff", float64[:, :]),
+    ("init_w", float64[:, :]),
+    ("XwX_blocks", float64[:, :, :]),
+    ("Xwy_blocks", float64[:, :]),
+    ("XwX", float64[:, :]),
+    ("Xwy", float64[:]),
+    ("coef", float64[:]),
+    ("coef_cov", float64[:, :]),
+    ("coef_se", float64[:]),
+    ("cat", float64[:]),
+    ("cat_cov", float64[:, :]),
+    ("cat_se", float64[:]),
+    ("tot", float64),
+    ("tot_cov", float64),
+    ("tot_se", float64),
+    ("prop", float64[:]),
+    ("prop_cov", float64[:, :]),
+    ("prop_se", float64[:]),
+    ("enrichment", float64[:]),
+    ("M_prop", float64[:]),
+    ("intercept", float64),
+    ("intercept_se", float64),
+]
 
+
+@jitclass(spec)
 class PartitionHeritability:
     def __init__(self, ref_ld, w_ld, ldr_n, overlap_matrix, M_annot):
         """
@@ -46,8 +86,9 @@ class PartitionHeritability:
         self.M_annot = M_annot
         self.M_tot = np.sum(M_annot)
         self.overlap_matrix_prop = overlap_matrix / M_annot
-        self.overlap_matrix_diff = self._get_overlap_matrix_diff()
 
+    def setup(self):
+        self.overlap_matrix_diff = self._get_overlap_matrix_diff()
         self.init_w = self._init_weights()
         self.XwX_blocks = self._block_XwX()
 
@@ -58,17 +99,18 @@ class PartitionHeritability:
 
         """
         block_size = n_snps // n_blocks
-        blocks = np.zeros((n_blocks, 2), dtype=int) 
+        blocks = np.zeros((n_blocks, 2), dtype=np.int64) 
         for i in range(n_blocks):
             start = i * block_size
             end = (i + 1) * block_size if i < n_blocks - 1 else n_snps
             blocks[i] = start, end
         return blocks
     
+    # @njit(parallel=True)
     def _get_overlap_matrix_diff(self):
         M_tot = self.M_annot[0]
         overlap_matrix_diff = np.zeros((self.n_annot, self.n_annot))
-        for i in range(self.n_annot):
+        for i in prange(self.n_annot):
             if M_tot != self.M_annot[i]: 
                 overlap_matrix_diff[i] = (
                     self.overlap_matrix[i] / self.M_annot[i] -
@@ -83,7 +125,7 @@ class PartitionHeritability:
         """
         x_tot = np.sum(self.ref_ld, axis=1).reshape(-1, 1)
         x_tot = np.maximum(x_tot, 1)
-        hsq = 0.15 # 0.18884230401681382
+        hsq = 0.18884230401681382 # TODO: check how large the effect is.
         self.w_ld = np.maximum(self.w_ld, 1)
         c = hsq * self.ldr_n / self.M_tot
         het_w = 1 / (2 * (1 + c * x_tot) ** 2)
@@ -92,6 +134,7 @@ class PartitionHeritability:
         w = w / np.sum(w)
         return w
     
+    # @njit(parallel=True, fastmath=True)
     def _block_XwX(self):
         """
         get XwX for each block
@@ -102,8 +145,9 @@ class PartitionHeritability:
         self.ref_ld = self.ref_ld * self.init_w
 
         XwX_blocks = np.zeros((self.n_blocks, self.n_coef, self.n_coef))
-        for i, (start, end) in enumerate(self.blocks):
-            XwX_blocks[i] = np.dot(self.ref_ld[start:end].T, self.ref_ld[start:end])
+        for i in prange(self.n_blocks):
+            start, end = self.blocks[i]
+            XwX_blocks[i] = self.dot(self.ref_ld[start:end].T, self.ref_ld[start:end])
 
         self.ref_ld = self.ref_ld * self.init_w  # Xw
 
@@ -118,12 +162,11 @@ class PartitionHeritability:
         y (n_snp,): np.array of chisq statistics
 
         """
-        y = y.flatten()
         self.Xwy_blocks = self._block_Xwy(y)
         self.XwX, self.Xwy, total_coef = self._total_coef()
         lobo_coef = self._lobo_coef()
         pseudovalues = self.n_blocks * total_coef - (self.n_blocks - 1) * lobo_coef
-        _, jknife_se, jknife_cov = self._jackknife(pseudovalues)
+        jknife_se, jknife_cov = self._jackknife(pseudovalues)
 
         self.coef, self.coef_cov, self.coef_se = self._coef(total_coef, jknife_cov)
         self.cat, self.cat_cov, self.cat_se = self._cat()
@@ -135,27 +178,43 @@ class PartitionHeritability:
         
         return output
 
+    @staticmethod
+    def inv(A):
+        L = np.linalg.cholesky(A)
+        inv_L = np.linalg.inv(L)
+        inv_A = inv_L.T @ inv_L
+        return inv_A
+    
+    @staticmethod
+    def dot(A, B):
+        A = np.ascontiguousarray(A)
+        B = np.ascontiguousarray(B)
+        return np.dot(A, B)
+
+    # @njit(parallel=True, fastmath=True)
     def _block_Xwy(self, y):
         """
         get Xwy for each block
 
         """
         Xwy_blocks = np.zeros((self.n_blocks, self.n_coef))
-        for i, (start, end) in enumerate(self.blocks):
-            Xwy_blocks[i] = np.dot(self.ref_ld[start:end].T, y[start:end])
+        for i in prange(self.n_blocks):
+            start, end = self.blocks[i]
+            Xwy_blocks[i] = self.dot(self.ref_ld[start:end].T, y[start:end])
         return Xwy_blocks
 
     def _total_coef(self):
         XwX = np.sum(self.XwX_blocks, axis=0)
         Xwy = np.sum(self.Xwy_blocks, axis=0)
-        return XwX, Xwy, np.dot(inv(XwX), Xwy)
+        return XwX, Xwy, self.dot(self.inv(XwX), Xwy)
     
+    # @njit(parallel=True, fastmath=True)
     def _lobo_coef(self):
         lobo_coef = np.zeros((self.n_blocks, self.n_coef))
-        for i in range(self.n_blocks):
+        for i in prange(self.n_blocks):
             XwX_i = self.XwX - self.XwX_blocks[i]
             Xwy_i = self.Xwy - self.Xwy_blocks[i]
-            lobo_coef[i] = np.dot(inv(XwX_i), Xwy_i)
+            lobo_coef[i] = self.dot(self.inv(XwX_i), Xwy_i)
         return lobo_coef
     
     def _jackknife(self, pseudovalues):
@@ -163,10 +222,10 @@ class PartitionHeritability:
         Jackknite estimator
 
         """
-        jknife_cov = np.atleast_2d(np.cov(pseudovalues.T, ddof=1) / self.n_blocks)
-        jknife_se = np.atleast_2d(np.sqrt(np.diag(jknife_cov)))
-        jknife_est = np.atleast_2d(np.mean(pseudovalues, axis=0))
-        return (jknife_est, jknife_se, jknife_cov)
+        jknife_cov = np.cov(pseudovalues.T, ddof=1) / self.n_blocks
+        jknife_se = np.sqrt(np.diag(jknife_cov))
+        # jknife_est = np.mean(pseudovalues, axis=0)
+        return jknife_se, jknife_cov
     
     def _coef(self, total_coef, jknife_cov):
         coef = total_coef[0:-1]
@@ -177,7 +236,7 @@ class PartitionHeritability:
     def _cat(self):
         cat = self.M_annot / self.Nbar * self.coef
         M_annot = (self.M_annot / self.Nbar).reshape(1, -1)
-        cat_cov = np.dot(M_annot.T, M_annot) * self.coef_cov
+        cat_cov = self.dot(M_annot.T, M_annot) * self.coef_cov
         cat_se = np.sqrt(np.diag(cat_cov))
         return cat, cat_cov, cat_se
     
@@ -191,11 +250,11 @@ class PartitionHeritability:
         lobo = lobo[:, 0:-1]
         numer_delete_vals = self.M_annot * lobo / self.Nbar
         denom_delete_vals = np.sum(numer_delete_vals, axis=1).reshape(-1, 1)
-        denom_delete_vals = np.dot(denom_delete_vals, np.ones((1, self.n_annot)))
+        denom_delete_vals = self.dot(denom_delete_vals, np.ones((1, self.n_annot)))
         prop = self.cat / self.tot
 
         pseudovalues = self.n_blocks * prop - (self.n_blocks - 1) * numer_delete_vals / denom_delete_vals
-        _, jknife_se, jknife_cov = self._jackknife(pseudovalues)
+        jknife_se, jknife_cov = self._jackknife(pseudovalues)
         return prop, jknife_cov, jknife_se
 
     def _enrichment(self):
@@ -205,13 +264,13 @@ class PartitionHeritability:
     
     def _intercept(self, total_coef, jknife_se):
         intercept = total_coef[-1]
-        intercept_se = jknife_se[0, -1]
+        intercept_se = jknife_se[-1]
         return intercept, intercept_se
 
     def _overlap_output(self):
         M_tot = self.M_annot[0]
-        prop_hsq_overlap = np.dot(self.overlap_matrix_prop, self.prop.T)
-        prop_hsq_overlap_var = np.sum(np.dot(self.overlap_matrix_prop, self.prop_cov) * self.overlap_matrix_prop, axis=1)
+        prop_hsq_overlap = self.dot(self.overlap_matrix_prop, self.prop.T)
+        prop_hsq_overlap_var = np.sum(self.dot(self.overlap_matrix_prop, self.prop_cov) * self.overlap_matrix_prop, axis=1)
         prop_hsq_overlap_var = np.maximum(prop_hsq_overlap_var, 1e-10)
         prop_hsq_overlap_se = np.sqrt(prop_hsq_overlap_var)
 
@@ -219,8 +278,8 @@ class PartitionHeritability:
         enrichment = prop_hsq_overlap / prop_M_overlap
         enrichment_se = prop_hsq_overlap_se / prop_M_overlap
 
-        diff_est = np.dot(self.overlap_matrix_diff, self.coef)
-        diff_var = np.sum(np.dot(self.overlap_matrix_diff, self.coef_cov) * self.overlap_matrix_diff, axis=1)
+        diff_est = self.dot(self.overlap_matrix_diff, self.coef)
+        diff_var = np.sum(self.dot(self.overlap_matrix_diff, self.coef_cov) * self.overlap_matrix_diff, axis=1)
         diff_se = np.sqrt(diff_var)
         diff_se = np.maximum(diff_se, 1e-10)
 
@@ -354,51 +413,47 @@ def run(args, log):
             args.voxels = np.arange(bases.shape[0])
 
         # doing analysis
-        log.info(f"Partitioning heritability ...")
+        log.info(f"\nPartitioning heritability ...")
         snp_idxs = ldr_sumstats.snpinfo["SNP"].isin(common_snps.common_snps["SNP"]).to_numpy()
         # snp_idxs = ldr_sumstats.snp_idxs
         ldr_n = np.array(ldr_sumstats.snpinfo["N"][snp_idxs]).reshape(-1, 1)
         partition_h2 = PartitionHeritability(
             ref_ld, w_ld, ldr_n, overlap_matrix, M_annot
         )
+        partition_h2.setup()
         vgwas = VGWAS(bases, ldr_cov, ldr_sumstats, snp_idxs, ldr_n, args.threads)
 
+        all_df = []
         for voxel_idxs in tqdm(
             voxel_reader(np.sum(snp_idxs), args.voxels),
-            desc=f"Doing GWAS for {len(args.voxels)} voxel(s) in batch",
+            desc=f"Reconstructing GWAS for {len(args.voxels)} voxel(s) in batch",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
             voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
-            voxel_chisq = (voxel_beta / voxel_se) ** 2
-            output = partition_h2.run(voxel_chisq)
-            df = organized_output(
-                *output, 
-                annot_names=annot_names, 
-                voxel_idx=voxel_idxs[0]+1,
-                n_blocks=partition_h2.n_blocks)
+            voxel_chisq = ((voxel_beta / voxel_se) ** 2).astype(np.float64)
+            for i, voxel_idx in enumerate(voxel_idxs):
+                output = partition_h2.run(voxel_chisq[:, i])
+                df = organized_output(
+                    *output, 
+                    annot_names=annot_names, 
+                    voxel_idx=voxel_idx+1,
+                    n_blocks=partition_h2.n_blocks)
+                all_df.append(df)
 
-        # df = pd.concat(df, ignore_index=True)
-        df.to_csv(
-                f"{args.out}_partition_h2.txt",
+        all_df = pd.concat(all_df, ignore_index=True)
+        for _, annot_df in all_df.groupby("Category"):
+            category = annot_df.iloc[0]["Category"]
+            annot_df = annot_df.drop(columns=["Category"])
+            annot_df.to_csv(
+                f"{args.out}_partition_h2_{category}.txt",
                 index=False,
                 sep="\t",
                 header=True,
                 float_format="%.5e",
             )
-        log.info(f"Saved partition heritability to {args.out}_partition_h2.txt")
-        
-        # for _, annot_df in all_df.groupby("Category"):
-        #     annot_df = annot_df.drop(columns=["Category"])
-        #     annot_df.to_csv(
-        #         f"{args.out}_partition_h2_{annot_df.iloc[0]['Category']}.txt",
-        #         index=False,
-        #         sep="\t",
-        #         header=True,
-        #         float_format="%.5e",
-        #     )
-        # log.info(
-        #     f"Output partition heritability for to {args.out}"
-        # ) # TODO: think of saving in a folder
+        log.info(
+            f"Saved partition heritability for to {args.out}_partition_h2_*.txt"
+        ) 
 
     finally:
         if "ldr_sumstats" in locals():
