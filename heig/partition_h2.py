@@ -9,7 +9,7 @@ import heig.input.dataset as ds
 
 from numba import float64, int64
 from numba.experimental import jitclass
-from numba import njit, prange
+from numba import prange
 
 """
 Partition h2 for each voxel in an image
@@ -125,7 +125,7 @@ class PartitionHeritability:
         """
         x_tot = np.sum(self.ref_ld, axis=1).reshape(-1, 1)
         x_tot = np.maximum(x_tot, 1)
-        hsq = 0.18884230401681382 # TODO: check how large the effect is.
+        hsq = 0.15 # 0.18884230401681382
         self.w_ld = np.maximum(self.w_ld, 1)
         c = hsq * self.ldr_n / self.M_tot
         het_w = 1 / (2 * (1 + c * x_tot) ** 2)
@@ -380,12 +380,11 @@ def run(args, log):
         w_ld = common_snps.common_snps.merge(w_ld, on="SNP").iloc[:, 1:].values
 
         # read overlap matrix
-        # overlap_matrix = ds.read_ld_annot(args.ref_ld_chr, args.frqfile_chr)
-        # log.info(
-        #     f"Read overlap matrix from {args.ref_ld_chr}"
-        # )
-        overlap_matrix = np.load('/work/users/o/w/owenjf/image_genetics/methods/package_pub/test_output/partition_h2/overlap_matrix.npy')
+        overlap_matrix = ds.read_ld_annot(args.ref_ld_chr, args.frqfile_chr)
         M_annot = overlap_matrix[0]
+        log.info(f"Read overlap matrix from {args.ref_ld_chr}")
+        # overlap_matrix = np.load('/work/users/o/w/owenjf/image_genetics/methods/package_pub/test_output/partition_h2/overlap_matrix.npy')
+        # M_annot = overlap_matrix[0]
 
         # keep selected LDRs
         if args.n_ldrs is not None:
@@ -415,7 +414,6 @@ def run(args, log):
         # doing analysis
         log.info(f"\nPartitioning heritability ...")
         snp_idxs = ldr_sumstats.snpinfo["SNP"].isin(common_snps.common_snps["SNP"]).to_numpy()
-        # snp_idxs = ldr_sumstats.snp_idxs
         ldr_n = np.array(ldr_sumstats.snpinfo["N"][snp_idxs]).reshape(-1, 1)
         partition_h2 = PartitionHeritability(
             ref_ld, w_ld, ldr_n, overlap_matrix, M_annot
