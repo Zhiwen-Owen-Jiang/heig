@@ -2,9 +2,53 @@ import numpy as np
 import threading
 import concurrent.futures
 from scipy.stats import chi2
+from numba import njit
 from tqdm import tqdm
 from heig import sumstats
 import heig.input.dataset as ds
+
+
+@njit()
+def compute_ztz_inv_batch(
+    ldr_beta_batch, ldr_z_batch, ldr_var_batch, n, n_ldrs
+):
+    """
+    Computing (Z'Z)^{-1} from summary statistics in batch
+
+    """
+    ldr_se_batch = ldr_beta_batch / ldr_z_batch
+    ztz_inv_batch = np.sum(
+        (ldr_se_batch * ldr_se_batch + ldr_beta_batch * ldr_beta_batch / n)
+        / ldr_var_batch,
+        axis=1,
+    )
+    return ztz_inv_batch / n_ldrs
+
+
+@njit()
+def recover_beta_batch(ldr_beta_batch, bases_batch):
+    """
+    Computing voxel beta in batch
+
+    """
+    ldr_beta_batch = np.ascontiguousarray(ldr_beta_batch)
+    bases_batch = np.ascontiguousarray(bases_batch)
+    voxel_beta_batch = np.dot(ldr_beta_batch, bases_batch)
+    return voxel_beta_batch
+
+
+@njit()
+def recover_se_numba(voxel_idxs, voxel_beta, bases, ldr_cov, ztz_inv, n):
+    base = bases[voxel_idxs]  # (q, r)
+    if base.ndim == 1:
+        base = base.reshape(-1, 1)
+    part1 = np.sum(np.dot(base, ldr_cov) * base, axis=1)  # (q, )
+    voxel_beta_squared = voxel_beta * voxel_beta
+    voxel_beta_squared /= n
+    voxel_se = part1 * ztz_inv
+    voxel_se -= voxel_beta_squared
+    voxel_se = np.sqrt(voxel_se)
+    return voxel_se
 
 
 class VGWAS:
@@ -27,6 +71,40 @@ class VGWAS:
         self.snp_idxs = snp_idxs
         self.n = n
         self.ztz_inv = self._compute_ztz_inv(threads)  # (d, 1)
+        # self.ztz_inv = self._compute_ztz_inv_numba(threads)  # (d, 1)
+
+    def _compute_ztz_inv_numba(self, threads):
+        """
+        Computing (Z'Z)^{-1} from summary statistics
+
+        Parameters:
+        ------------
+        threads: number of threads
+
+        Returns:
+        ---------
+        ztz_inv: a np.array of (Z'Z)^{-1} (d, 1)
+
+        """
+        ldr_var = np.diag(self.ldr_cov)
+        n_ldrs = self.bases.shape[1]
+        ztz_inv = np.zeros(np.sum(self.snp_idxs), dtype=np.float32)
+        i = 0
+        data_reader = self.ldr_gwas.data_reader(
+            "both", self.ldr_idxs, self.snp_idxs, all_gwas=False
+        )
+
+        for ldr_beta_batch, ldr_z_batch in data_reader:
+            batch_size = ldr_beta_batch.shape[1]
+            ldr_var_batch = ldr_var[i : i + batch_size]
+            ztz_inv_batch = compute_ztz_inv_batch(
+                ldr_beta_batch, ldr_z_batch, ldr_var_batch, self.n, n_ldrs
+            )
+            i += batch_size
+            ztz_inv += ztz_inv_batch
+        ztz_inv = ztz_inv.reshape(-1, 1)
+
+        return ztz_inv
 
     def _compute_ztz_inv(self, threads):
         """
@@ -96,6 +174,38 @@ class VGWAS:
         )
         with lock:
             ztz_inv += ztz_inv_batch
+
+    def recover_beta_numba(self, voxel_idxs, threads):
+        """
+        Recovering voxel beta
+
+        Parameters:
+        ------------
+        voxel_idxs: a list of voxel idxs (q)
+        threads: number of threads
+
+        Returns:
+        ---------
+        voxel_beta: a np.array of voxel beta (d, q)
+
+        """
+        voxel_beta = np.zeros(
+            (np.sum(self.snp_idxs), len(voxel_idxs)), dtype=np.float32
+        )
+        data_reader = self.ldr_gwas.data_reader(
+            "beta", self.ldr_idxs, self.snp_idxs, all_gwas=False
+        )
+        bases = self.bases[voxel_idxs]  # (q, r)
+
+        i = 0
+        for ldr_beta_batch in data_reader:
+            batch_size = ldr_beta_batch.shape[1]
+            bases_batch = bases[:, i : i + batch_size].T
+            voxel_beta_batch = recover_beta_batch(ldr_beta_batch, bases_batch)
+            i += batch_size
+            voxel_beta += voxel_beta_batch
+
+        return voxel_beta
 
     def recover_beta(self, voxel_idxs, threads):
         """
@@ -438,7 +548,11 @@ def run(args, log):
             desc=f"Doing GWAS for {len(args.voxels)} voxel(s) in batch",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
+            # voxel_beta = vgwas.recover_beta_numba(voxel_idxs, args.threads)
             voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
+            # voxel_se = recover_se_numba(
+            #     voxel_idxs, voxel_beta, vgwas.bases, vgwas.ldr_cov, vgwas.ztz_inv, vgwas.n
+            # )
             voxel_z = voxel_beta / voxel_se
             all_sig_idxs = voxel_z * voxel_z >= thresh_chisq
             all_sig_idxs_voxel = all_sig_idxs.any(axis=0)
