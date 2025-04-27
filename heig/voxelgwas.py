@@ -549,10 +549,10 @@ def run(args, log):
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
             # voxel_beta = vgwas.recover_beta_numba(voxel_idxs, args.threads)
-            voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
-            # voxel_se = recover_se_numba(
-            #     voxel_idxs, voxel_beta, vgwas.bases, vgwas.ldr_cov, vgwas.ztz_inv, vgwas.n
-            # )
+            # voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
+            voxel_se = recover_se_numba(
+                voxel_idxs, voxel_beta, vgwas.bases, vgwas.ldr_cov, vgwas.ztz_inv, vgwas.n
+            )
             voxel_z = voxel_beta / voxel_se
             all_sig_idxs = voxel_z * voxel_z >= thresh_chisq
             all_sig_idxs_voxel = all_sig_idxs.any(axis=0)

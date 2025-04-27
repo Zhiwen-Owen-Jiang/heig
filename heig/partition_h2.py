@@ -3,7 +3,7 @@ import pandas as pd
 from scipy.stats import t
 from tqdm import tqdm
 from heig.sumstats import read_sumstats
-from heig.voxelgwas import VGWAS, voxel_reader
+from heig.voxelgwas import VGWAS, voxel_reader, recover_se_numba
 from heig.herigc import CommonSNPs
 import heig.input.dataset as ds
 
@@ -427,7 +427,10 @@ def run(args, log):
             desc=f"Reconstructing GWAS for {len(args.voxels)} voxel(s) in batch",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
-            voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
+            # voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)
+            voxel_se = recover_se_numba(
+                voxel_idxs, voxel_beta, vgwas.bases, vgwas.ldr_cov, vgwas.ztz_inv, vgwas.n
+            )
             voxel_chisq = ((voxel_beta / voxel_se) ** 2).astype(np.float64)
             for i, voxel_idx in enumerate(voxel_idxs):
                 output = partition_h2.run(voxel_chisq[:, i])
