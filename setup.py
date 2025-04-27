@@ -24,6 +24,7 @@ setup(name='heig',
           'tqdm==4.66.4',
           'pyarrow==17.0.0',
           'filelock==3.15.4',
-          'hail==0.2.130'
+          'hail==0.2.130',
+          'numba==0.61.0'
       ])
 
