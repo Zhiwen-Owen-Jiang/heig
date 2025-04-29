@@ -42,6 +42,8 @@ def recover_se_numba(voxel_idxs, voxel_beta, bases, ldr_cov, ztz_inv, n):
     base = bases[voxel_idxs]  # (q, r)
     if base.ndim == 1:
         base = base.reshape(-1, 1)
+    base = np.ascontiguousarray(base)
+    ldr_cov = np.ascontiguousarray(ldr_cov)
     part1 = np.sum(np.dot(base, ldr_cov) * base, axis=1)  # (q, )
     voxel_beta_squared = voxel_beta * voxel_beta
     voxel_beta_squared /= n
