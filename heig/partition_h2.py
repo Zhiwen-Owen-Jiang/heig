@@ -20,6 +20,10 @@ Only binary annotations are allowed
 3. reconstruct summary statistics for each voxel, calculate x'y, (200, n_annot, n_voxels)
 4. calculate tau, prop_h2, and enrichment 
 
+TODO:
+1. add an option --quantile-enrich to calculate quantile enrichment, can be a list of files;
+    no prop_h2 will be output; output coefficient, h2g, prop_h2g, enrich for each quantile.
+
 """
 
 spec = [
@@ -33,7 +37,8 @@ spec = [
     ("n_coef", int64),
     ("overlap_matrix", int64[:, :]),
     ("M_annot", int64[:]),
-    ("M_tot", float64),
+    ("M_all_tot", int64),
+    ("M_tot", int64),
     ("overlap_matrix_prop", float64[:, :]),
     ("overlap_matrix_diff", float64[:, :]),
     ("init_w", float64[:, :]),
@@ -62,7 +67,7 @@ spec = [
 
 @jitclass(spec)
 class PartitionHeritability:
-    def __init__(self, ref_ld, w_ld, ldr_n, overlap_matrix, M_annot):
+    def __init__(self, ref_ld, w_ld, ldr_n, overlap_matrix, M_annot, M_tot):
         """
         Parameters:
         ------------
@@ -71,6 +76,7 @@ class PartitionHeritability:
         ldr_n (n_snp, 1): np.array of sample size for each SNP
         overlap_matrix (n_annot, n_annot): np.array of overlap matrix
         M_annot (n_annot,): np.array of number of SNPs in each annotation
+        M_tot: int of total number of SNPs in all annotations
 
         """
         self.ref_ld = ref_ld
@@ -84,7 +90,8 @@ class PartitionHeritability:
 
         self.overlap_matrix = overlap_matrix
         self.M_annot = M_annot
-        self.M_tot = np.sum(M_annot)
+        self.M_all_tot = np.sum(M_annot) # this equals M_tot + other categories
+        self.M_tot = M_tot
         self.overlap_matrix_prop = overlap_matrix / M_annot
 
     def setup(self):
@@ -108,13 +115,12 @@ class PartitionHeritability:
     
     # @njit(parallel=True)
     def _get_overlap_matrix_diff(self):
-        M_tot = self.M_annot[0]
         overlap_matrix_diff = np.zeros((self.n_annot, self.n_annot))
         for i in prange(self.n_annot):
-            if M_tot != self.M_annot[i]: 
+            if self.M_tot != self.M_annot[i]: 
                 overlap_matrix_diff[i] = (
                     self.overlap_matrix[i] / self.M_annot[i] -
-                    (self.M_annot - self.overlap_matrix[i]) / (M_tot - self.M_annot[i])
+                    (self.M_annot - self.overlap_matrix[i]) / (self.M_tot - self.M_annot[i])
                 )
         return overlap_matrix_diff
         
@@ -125,9 +131,9 @@ class PartitionHeritability:
         """
         x_tot = np.sum(self.ref_ld, axis=1).reshape(-1, 1)
         x_tot = np.maximum(x_tot, 1)
-        hsq = 0.15 # 0.18884230401681382
+        hsq = 0.15 # 0.18880904020663977 # 0.18884230401681382
         self.w_ld = np.maximum(self.w_ld, 1)
-        c = hsq * self.ldr_n / self.M_tot
+        c = hsq * self.ldr_n / self.M_all_tot
         het_w = 1 / (2 * (1 + c * x_tot) ** 2)
         oc_w = 1 / self.w_ld
         w = np.sqrt(het_w * oc_w)
@@ -172,8 +178,8 @@ class PartitionHeritability:
         self.cat, self.cat_cov, self.cat_se = self._cat()
         self.tot, self.tot_cov, self.tot_se = self._tot()
         self.prop, self.prop_cov, self.prop_se = self._prop(lobo_coef)
-        self.enrichment, self.M_prop = self._enrichment()
-        self.intercept, self.intercept_se = self._intercept(total_coef, jknife_se)
+        # self.enrichment, self.M_prop = self._enrichment()
+        # self.intercept, self.intercept_se = self._intercept(total_coef, jknife_se)
         output = self._overlap_output()       
         
         return output
@@ -258,8 +264,8 @@ class PartitionHeritability:
         return prop, jknife_cov, jknife_se
 
     def _enrichment(self):
-        M_prop = self.M_annot / self.M_tot
-        enrichment = self.cat / self.M_annot / (self.tot / self.M_tot)
+        M_prop = self.M_annot / self.M_all_tot
+        enrichment = self.cat / self.M_annot / (self.tot / self.M_all_tot)
         return enrichment, M_prop
     
     def _intercept(self, total_coef, jknife_se):
@@ -268,13 +274,12 @@ class PartitionHeritability:
         return intercept, intercept_se
 
     def _overlap_output(self):
-        M_tot = self.M_annot[0]
         prop_hsq_overlap = self.dot(self.overlap_matrix_prop, self.prop.T)
         prop_hsq_overlap_var = np.sum(self.dot(self.overlap_matrix_prop, self.prop_cov) * self.overlap_matrix_prop, axis=1)
         prop_hsq_overlap_var = np.maximum(prop_hsq_overlap_var, 1e-10)
         prop_hsq_overlap_se = np.sqrt(prop_hsq_overlap_var)
 
-        prop_M_overlap = self.M_annot / M_tot
+        prop_M_overlap = self.M_annot / self.M_tot
         enrichment = prop_hsq_overlap / prop_M_overlap
         enrichment_se = prop_hsq_overlap_se / prop_M_overlap
 
@@ -308,6 +313,7 @@ def organized_output(
         "Enrichment_p": diff_p,
         "Coefficient": coef,
         "Coefficient_se": coef_se, 
+        "Coefficient_z": coef / coef_se,
     })
 
     return df
@@ -323,6 +329,7 @@ def check_input(args, log):
         raise ValueError("--ldr-cov is required")
     if args.ref_ld_chr is None:
         raise ValueError("--ref-ld-chr is required")
+    args.ref_ld_chr = args.ref_ld_chr.split(",")
     if args.w_ld_chr is None:
         raise ValueError("--w-ld-chr is required")
     if args.frqfile_chr is None:
@@ -339,23 +346,52 @@ def run(args, log):
     bases = np.load(args.bases)
     log.info(f"{bases.shape[1]} bases read from {args.bases}")
 
+    # select voxels
+    if args.voxels is not None:
+        if np.max(args.voxels) + 1 <= bases.shape[0] and np.min(args.voxels) >= 0:
+            log.info(f"{len(args.voxels)} voxel(s) included.")
+        else:
+            raise ValueError("--voxels index (one-based) out of range")
+    else:
+        args.voxels = np.arange(bases.shape[0])
+
     try:
         ldr_sumstats = read_sumstats(args.ldr_sumstats)
         log.info(
             f"{ldr_sumstats.n_snps} SNPs read from LDR summary statistics {args.ldr_sumstats}"
         )
-        
-        ref_ld, annot_names = ds.read_ld(args.ref_ld_chr, read_name=True)
+
+        # keep selected LDRs
+        if args.n_ldrs is not None:
+            bases, ldr_cov, ldr_sumstats, _ = ds.keep_ldrs(
+                args.n_ldrs, bases, ldr_cov, ldr_sumstats
+            )
+            log.info(f"Keeping the top {args.n_ldrs} LDRs.")
+
+        if bases.shape[1] != ldr_cov.shape[0] or bases.shape[1] != ldr_sumstats.n_gwas:
+            raise ValueError(
+                (
+                    "inconsistent dimension for bases, variance-covariance matrix of LDRs, "
+                    "and LDR summary statistics. "
+                    "Try to use --n-ldrs"
+                )
+            )
+
+        # read reference data        
+        ref_ld, annot_names = ds.read_ld_list(args.ref_ld_chr)
         log.info(
             (
                 f"{ref_ld.shape[0]} SNPs and {len(annot_names)} annotations "
-                f"read from reference panel {args.ref_ld_chr}"
+                f"read from reference panel(s) {args.ref_ld_chr}"
             )
         )
 
+        M_annot = ds.read_M(args.ref_ld_chr)
+        log.info(f"Read number of SNPs (0.05 < MAF < 0.95) in each annotation from {args.ref_ld_chr}")
+
         w_ld, _ = ds.read_ld(args.w_ld_chr, read_name=False)
         log.info(
-            f"{w_ld.shape[0]} SNPs read from regression weight {args.w_ld_chr}"
+            f"{w_ld.shape[0]} SNPs in regression weights {args.w_ld_chr}"
         )
         
         # extract common SNPs
@@ -375,48 +411,22 @@ def run(args, log):
             )
         )
 
-        # ldr_sumstats.extract_snps(common_snps.common_snps)
         ref_ld = common_snps.common_snps.merge(ref_ld, on="SNP").iloc[:, 1:].values
         w_ld = common_snps.common_snps.merge(w_ld, on="SNP").iloc[:, 1:].values
 
         # read overlap matrix
-        overlap_matrix = ds.read_ld_annot(args.ref_ld_chr, args.frqfile_chr)
-        M_annot = overlap_matrix[0]
+        overlap_matrix, M_tot = ds.read_ld_annot(args.ref_ld_chr, args.frqfile_chr)
+        # M_annot = overlap_matrix[0]
         log.info(f"Read overlap matrix from {args.ref_ld_chr}")
         # overlap_matrix = np.load('/work/users/o/w/owenjf/image_genetics/methods/package_pub/test_output/partition_h2/overlap_matrix.npy')
         # M_annot = overlap_matrix[0]
 
-        # keep selected LDRs
-        if args.n_ldrs is not None:
-            bases, ldr_cov, ldr_sumstats, _ = ds.keep_ldrs(
-                args.n_ldrs, bases, ldr_cov, ldr_sumstats
-            )
-            log.info(f"Keeping the top {args.n_ldrs} LDRs.")
-
-        if bases.shape[1] != ldr_cov.shape[0] or bases.shape[1] != ldr_sumstats.n_gwas:
-            raise ValueError(
-                (
-                    "inconsistent dimension for bases, variance-covariance matrix of LDRs, "
-                    "and LDR summary statistics. "
-                    "Try to use --n-ldrs"
-                )
-            )
-
-        # select voxels
-        if args.voxels is not None:
-            if np.max(args.voxels) + 1 <= bases.shape[0] and np.min(args.voxels) >= 0:
-                log.info(f"{len(args.voxels)} voxel(s) included.")
-            else:
-                raise ValueError("--voxels index (one-based) out of range")
-        else:
-            args.voxels = np.arange(bases.shape[0])
-
         # doing analysis
-        log.info(f"\nPartitioning heritability ...")
+        log.info(f"\nPartitioning heritability for {len(args.voxels)} voxel(s) ...")
         snp_idxs = ldr_sumstats.snpinfo["SNP"].isin(common_snps.common_snps["SNP"]).to_numpy()
         ldr_n = np.array(ldr_sumstats.snpinfo["N"][snp_idxs]).reshape(-1, 1)
         partition_h2 = PartitionHeritability(
-            ref_ld, w_ld, ldr_n, overlap_matrix, M_annot
+            ref_ld, w_ld, ldr_n, overlap_matrix, M_annot, M_tot
         )
         partition_h2.setup()
         vgwas = VGWAS(bases, ldr_cov, ldr_sumstats, snp_idxs, ldr_n, args.threads)
@@ -424,7 +434,7 @@ def run(args, log):
         all_df = []
         for voxel_idxs in tqdm(
             voxel_reader(np.sum(snp_idxs), args.voxels),
-            desc=f"Reconstructing GWAS for {len(args.voxels)} voxel(s) in batch",
+            desc=f"{len(args.voxels)} voxel(s)",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
             # voxel_se = vgwas.recover_se(voxel_idxs, voxel_beta)

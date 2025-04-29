@@ -663,6 +663,24 @@ def read_variant_sets(file):
     return variant_sets
 
 
+def read_ld_list(prefix_list):
+    """
+    Read LD scores from a list of prefixes; usually for cell type analysis
+    
+    """
+    merged_ref_ld = None
+    merged_annot_names = list()
+    for prefix in prefix_list:
+        ref_ld, annot_names = read_ld(prefix, read_name=True)
+        if merged_ref_ld is None:
+            merged_ref_ld = ref_ld.copy()
+        else:
+            merged_ref_ld = merged_ref_ld.merge(ref_ld, on="SNP")
+        merged_annot_names.extend(annot_names)
+
+    return merged_ref_ld, merged_annot_names
+
+
 def read_ld(prefix, read_name=False):
     """
     Read LD scores by chr; can read reference LD or regression LD
@@ -682,52 +700,58 @@ def read_ld(prefix, read_name=False):
     return ref_ld, annot_names
 
 
-def read_M(prefix, common=True):
+def read_M(prefix_list, common=True):
     """
     Read number of variants for each LDR
     
     """
     M = list()
     for i in range(1, 23):
-        if common:
-            M_chr = np.loadtxt(f"{prefix}{i}.l2.M_5_50")
-        else:
-            M_chr = np.loadtxt(f"{prefix}{i}.l2.M")
+        M_chr_list = list()
+        for prefix in prefix_list:
+            if common:
+                M_chr = np.loadtxt(f"{prefix}{i}.l2.M_5_50", dtype=np.int64)
+            else:
+                M_chr = np.loadtxt(f"{prefix}{i}.l2.M", dtype=np.int64)
+            M_chr_list.append(M_chr)
+        M_chr = np.hstack(M_chr_list)
         M.append(M_chr)
     M = np.array(M).sum(axis=0)
 
     return M
 
 
-def read_ld_annot(prefix, frqfile_prefix):
+def read_ld_annot(prefix_list, frqfile_prefix):
     """
     Read binary LD annotation matrix
     
     """
     overlap_matrix = list()
-    # M_tot = 0
+    M_tot = 0
 
     for i in range(1, 23):
-        overlap_matrix_chr = pd.read_csv(
-            f"{prefix}{i}.annot.gz", sep="\t", compression="gzip"
-        ).iloc[:, 4:].values
+        overlap_matrix_chr_list = list()
+        for prefix in prefix_list:
+            overlap_matrix_chr = pd.read_csv(
+                f"{prefix}{i}.annot.gz", sep="\t", compression="gzip"
+            )
+            cols_to_del = list()
+            for col in ["CHR", "BP", "SNP", "CM"]:
+                if col in overlap_matrix_chr.columns:
+                    cols_to_del.append(col)
+            overlap_matrix_chr = overlap_matrix_chr.drop(cols_to_del, axis=1)
+            overlap_matrix_chr_list.append(overlap_matrix_chr.values)
+        overlap_matrix_chr = np.hstack(overlap_matrix_chr_list)
         frq_chr = pd.read_csv(
             f"{frqfile_prefix}{i}.frq", sep="\s+", usecols=["MAF"]
         ).values.flatten()
-        if len(overlap_matrix_chr) != len(frq_chr):
-            raise ValueError(
-                (
-                    f"the number of variants in {prefix}{i}.annot.gz "
-                    f"and {frqfile_prefix}{i}.frq do not match"
-                )
-            )
         overlap_matrix_chr = overlap_matrix_chr[
             (frq_chr > 0.05) & (frq_chr < 0.95)
         ]
-        # M_tot += overlap_matrix_chr.shape[0]
+        M_tot += overlap_matrix_chr.shape[0]
         overlap_matrix_chr = csc_matrix(overlap_matrix_chr)
         overlap_matrix_chr = overlap_matrix_chr.T @ overlap_matrix_chr
         overlap_matrix.append(overlap_matrix_chr.toarray())
     overlap_matrix = np.sum(np.array(overlap_matrix), axis=0)
     
-    return overlap_matrix
+    return overlap_matrix, M_tot
