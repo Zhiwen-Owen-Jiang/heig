@@ -1010,6 +1010,7 @@ def check_accepted_args(module, args, log):
             "read_image",
             "keep",
             "remove",
+            "voxels",
             "image_txt",
             "coord_txt",
             "image_dir",
@@ -1023,6 +1024,7 @@ def check_accepted_args(module, args, log):
             "out",
             "fpca",
             "image",
+            "voxels",
             "all_pc",
             "n_ldrs",
             "keep",
@@ -1035,6 +1037,7 @@ def check_accepted_args(module, args, log):
             "out",
             "make_ldr",
             "image",
+            "voxels",
             "bases",
             "n_ldrs",
             "covar",
@@ -1584,6 +1587,7 @@ def process_args(args, log):
             args.voxels = ds.read_voxel(args.voxels)
         if np.min(args.voxels) <= -1:
             raise ValueError("voxel index must be one-based")
+        log.info(f"{len(args.voxels)} voxel(s) in --voxels.")
     
     if args.sig_thresh is not None:
         if args.sig_thresh <= 0 or args.sig_thresh >= 1:

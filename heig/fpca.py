@@ -233,6 +233,7 @@ class LocalLinear(KernelSmooth):
 
 def do_kernel_smoothing(
     raw_image_dir,
+    voxels,
     sm_image_dir,
     keep_idvs,
     remove_idvs,
@@ -248,6 +249,7 @@ def do_kernel_smoothing(
     Parameters:
     ------------
     raw_image_dir: directory to HDF5 file of raw images
+    voxels: a np.array of voxel indices to keep (0 based)
     sm_image_dir: directory to HDF5 file of smoothed images
     keep_idvs: pd.MultiIndex of subjects to keep
     remove_idvs: pd.MultiIndex of subjects to remove
@@ -263,7 +265,7 @@ def do_kernel_smoothing(
 
     """
     try:
-        raw_images = ImageManager(raw_image_dir)
+        raw_images = ImageManager(raw_image_dir, voxels)
         raw_images.keep_and_remove(keep_idvs, remove_idvs)
         n_subjects = len(raw_images.id_idxs)
         log.info(f"Using {n_subjects} subjects.")
@@ -566,6 +568,7 @@ def run(args, log):
         sm_image_dir = f"{args.out}_sm_images.h5"
         subject_wise_mean = do_kernel_smoothing(
             args.image,
+            args.voxels,
             sm_image_dir,
             args.keep,
             args.remove,

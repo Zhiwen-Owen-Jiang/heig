@@ -17,10 +17,11 @@ class ImageReader(ABC):
 
     """
 
-    def __init__(self, img_files, ids, out_dir):
+    def __init__(self, img_files, ids, voxels, out_dir):
         self.img_files = img_files
         self.n_images = len(self.img_files)
         self.ids = ids
+        self.voxels = voxels
         self.out_dir = out_dir
         self.logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class ImageReader(ABC):
 
         """
         self.coord = self._get_coord(coord_img_file)
+        if self.voxels is not None:
+            self.coord = self.coord[self.voxels]
         self.n_voxels = self.coord.shape[0]
 
         with h5py.File(self.out_dir, "w") as h5f:
@@ -150,6 +153,8 @@ class CIFTIReader(ImageReader):
         try:
             img = nib.load(img_file)
             data = img.get_fdata()[0]
+            if self.voxels is not None:
+                data = data[self.voxels]
             if np.std(data) == 0:
                 raise ValueError(f"{img_file} is an invalid image with variance 0")
             return data
@@ -178,6 +183,8 @@ class FreeSurferReader(ImageReader):
     def _read_image(self, img_file):
         try:
             data = nib.freesurfer.read_morph_data(img_file)
+            if self.voxels is not None:
+                data = data[self.voxels]
             if np.std(data) == 0:
                 raise ValueError(f"{img_file} is an invalid image with variance 0")
             return data
@@ -264,11 +271,12 @@ class ImageManager:
 
     """
 
-    def __init__(self, image_file):
+    def __init__(self, image_file, voxels=None):
         """
         Parameters:
         ------------
         image_file: a image HDF5 file path
+        voxels: a np.array of voxel indices to keep (0 based)
 
         """
         self.file = h5py.File(image_file, "r")
@@ -281,6 +289,14 @@ class ImageManager:
         self.id_idxs = np.arange(len(self.ids))
         self.extracted_ids = self.ids
         self.logger = logging.getLogger(__name__)
+        
+        if voxels is not None:
+            self.voxels = voxels
+            self.n_voxels = len(self.voxels)
+            self.coord = self.coord[self.voxels]
+        else:
+            self.voxels = np.arange(self.n_voxels)
+
         self.logger.info(
             f"{self.n_sub} subjects and {self.n_voxels} voxels (vertices) in {image_file}"
         )
@@ -326,7 +342,7 @@ class ImageManager:
 
         for i in range(0, self.n_sub, batch_size):
             id_idx_chuck = self.id_idxs[i : i + batch_size]
-            yield self.images[id_idx_chuck], self.ids[id_idx_chuck]
+            yield self.images[id_idx_chuck][:, self.voxels], self.ids[id_idx_chuck]
 
     def save(self, out_dir):
         """
@@ -365,7 +381,7 @@ class ImageManager:
         self.file.close()
 
 
-def merge_images(image_files, out_dir, log, keep_idvs=None, remove_idvs=None):
+def merge_images(image_files, voxels, out_dir, log, keep_idvs=None, remove_idvs=None):
     """
     Merging multiple image files
 
@@ -373,7 +389,7 @@ def merge_images(image_files, out_dir, log, keep_idvs=None, remove_idvs=None):
     try:
         image_managers = list()
         for image_file in image_files:
-            image_managers.append(ImageManager(image_file))
+            image_managers.append(ImageManager(image_file, voxels))
             if (
                 len(image_managers) > 1
                 and not np.equal(
@@ -502,10 +518,14 @@ def run(args, log):
         images.keep_and_remove(args.keep, args.remove, merge=True)
         ids = images.get_ids()
         images = np.array(images.data, dtype=np.float32)
-        log.info(f"Keeping {images.shape[0]} subjects.")
+        if args.voxels is not None:
+            images = images[:, args.voxels]
+        log.info(f"Keeping {images.shape[0]} subjects and {images.shape[1]} voxels.")
 
         coord = pd.read_csv(args.coord_txt, sep="\s+", header=None)
         log.info(f"Read coordinates from {args.coord_txt}")
+        if args.voxels is not None:
+            coord = coord.iloc[args.voxels]
         if coord.isnull().sum().sum() > 0:
             raise ValueError("no missing values allowed in coordinates")
         if coord.shape[0] != images.shape[1]:
@@ -515,7 +535,7 @@ def run(args, log):
     elif args.image is not None:
         try:
             log.info(f"Processing {args.image}")
-            image_manager = ImageManager(args.image)
+            image_manager = ImageManager(args.image, args.voxels)
             image_manager.keep_and_remove(args.keep, args.remove)
             image_manager.save(out_dir)
         finally:
@@ -524,7 +544,7 @@ def run(args, log):
 
     elif args.image_list is not None:
         log.info(f"Merging image files {args.image_list}")
-        merge_images(args.image_list, out_dir, log, args.keep, args.remove)
+        merge_images(args.image_list, args.voxels, out_dir, log, args.keep, args.remove)
 
     else:
         ids, img_files = get_image_list(
@@ -536,13 +556,13 @@ def run(args, log):
             )
         if args.coord_dir.endswith("nii.gz") or args.coord_dir.endswith("nii"):
             log.info("Reading NIFTI images.")
-            img_reader = NIFTIReader(img_files, ids, out_dir)
+            img_reader = NIFTIReader(img_files, ids, args.voxels, out_dir)
         elif args.coord_dir.endswith("gii.gz") or args.coord_dir.endswith("gii"):
             log.info("Reading CIFTI images.")
-            img_reader = CIFTIReader(img_files, ids, out_dir)
+            img_reader = CIFTIReader(img_files, ids, args.voxels, out_dir)
         else:
             log.info("Reading FreeSurfer morphometry data.")
-            img_reader = FreeSurferReader(img_files, ids, out_dir)
+            img_reader = FreeSurferReader(img_files, ids, args.voxels, out_dir)
         img_reader.create_dataset(args.coord_dir)
         img_reader.read_save_image(args.threads)
 

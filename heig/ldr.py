@@ -145,7 +145,7 @@ def run(args, log):
 
     try:
         # read images
-        images = ImageManager(args.image)
+        images = ImageManager(args.image, args.voxels)
         if n_voxels != images.n_voxels:
             raise ValueError("the images and bases have different resolution")
 
