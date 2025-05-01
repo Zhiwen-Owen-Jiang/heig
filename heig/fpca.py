@@ -301,8 +301,6 @@ def do_kernel_smoothing(
                     "id", data=np.array(raw_images.extracted_ids.tolist(), dtype="S10")
                 )
                 h5f.create_dataset("coord", data=raw_images.coord)
-                sm_images.attrs["id"] = "id"
-                sm_images.attrs["coord"] = "coord"
         else:
             raise ValueError("the bandwidth provided by --bw-opt may be problematic")
 

@@ -41,8 +41,6 @@ class ImageReader(ABC):
             )
             h5f.create_dataset("id", data=np.array(self.ids.tolist(), dtype="S10"))
             h5f.create_dataset("coord", data=self.coord)
-            images.attrs["id"] = "id"
-            images.attrs["coord"] = "coord"
         self.logger.info(
             (
                 f"{self.n_images} subjects and {self.n_voxels} voxels (vertices) "
@@ -260,8 +258,6 @@ def save_images(out_dir, images, coord, id):
         dset = file.create_dataset("images", data=images, dtype="float32")
         file.create_dataset("id", data=np.array(id.tolist(), dtype="S10"))
         file.create_dataset("coord", data=coord)
-        dset.attrs["id"] = "id"
-        dset.attrs["coord"] = "coord"
 
 
 class ImageManager:
@@ -363,8 +359,6 @@ class ImageManager:
                     "id", data=self.extracted_ids.tolist(), dtype="S10"
                 )
                 output.create_dataset("coord", data=self.coord)
-                dset.attrs["id"] = "id"
-                dset.attrs["coord"] = "coord"
 
                 start, end = 0, 0
                 for images_, _ in self.image_reader():
@@ -426,8 +420,6 @@ def merge_images(image_files, voxels, out_dir, log, keep_idvs=None, remove_idvs=
                 dtype="float32",
             )
             output.create_dataset("coord", data=image_managers[0].coord)
-            dset.attrs["id"] = "id"
-            dset.attrs["coord"] = "coord"
 
             ids_read = None
             start, end = 0, 0
