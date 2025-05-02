@@ -8,12 +8,44 @@ import hail as hl
 from tqdm import tqdm
 from collections import defaultdict
 from functools import partial
+from numba import njit, prange
 from sklearn.model_selection import KFold
 from scipy.linalg import cho_solve, cho_factor
 import heig.input.dataset as ds
 from heig.wgs.utils import init_hail, read_genotype_data, clean
 from hail.linalg import BlockMatrix
 from heig.utils import inv
+
+
+@njit()
+def dot(A, B):
+    A = np.ascontiguousarray(A)
+    B = np.ascontiguousarray(B)
+    return np.dot(A, B)
+
+
+@njit
+def ridge_prediction(XtX, alpha, Xty, x_test):
+    """
+    Computing ridge predictions
+
+    Parameters:
+    ------------
+    XtX: X'X
+    alpha: tuning parameter
+    Xty: X'y
+    x_test: test data
+
+    """
+    n_features = XtX.shape[0]
+    A = XtX.copy()
+    for i in range(n_features):
+        A[i, i] += alpha
+    L = np.linalg.cholesky(A)
+    z = np.linalg.solve(L, Xty)
+    ridge_beta = np.linalg.solve(L.T, z)
+    y_pred = dot(x_test, ridge_beta)
+    return y_pred
 
 
 class Relatedness:
@@ -41,8 +73,8 @@ class Relatedness:
         snp_getter: a generator for getting SNPs
         n_blocks: a positive number of genotype blocks
         n_snps: a positive number of total array snps
-        ldrs: n by r matrix
-        covar: n by p matrix (preprocessed, including the intercept)
+        ldrs: n by r matrix of LDRs
+        covar: n by p matrix of covariates (preprocessed, including the intercept)
 
         """
         ## these may come from the null model
@@ -50,14 +82,14 @@ class Relatedness:
         self.n_blocks = n_blocks
         self.kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
-        shrinkage0 = np.array([0.1, 0.5, 0.9])
+        shrinkage0 = np.array([0.1, 0.5, 0.9], dtype=np.float32)
         shrinkage0_ = (1 - shrinkage0) / shrinkage0
         self.n_params = len(shrinkage0)
-        self.shrinkage_level0 = n_snps * shrinkage0_
+        self.shrinkage_level0 = (n_snps * shrinkage0_).astype(np.float32)
 
-        shrinkage1 = np.array([0.01, 0.25, 0.5, 0.75, 0.99])
+        shrinkage1 = np.array([0.01, 0.25, 0.5, 0.75, 0.99], dtype=np.float32)
         shrinkage1_ = (1 - shrinkage1) / shrinkage1
-        self.shrinkage_level1 = len(shrinkage1) * n_blocks * shrinkage1_
+        self.shrinkage_level1 = (len(shrinkage1) * n_blocks * shrinkage1_).astype(np.float32)
 
         self.inner_covar_inv = inv(np.dot(covar.T, covar))  # (X'X)^{-1}, (p, p)
         self.resid_ldrs = ldrs - np.dot(
@@ -71,24 +103,24 @@ class Relatedness:
 
         self.logger = logging.getLogger(__name__)
 
-    @staticmethod
-    def _ridge_prediction(XtX, alpha, Xty, x_test):
-        """
-        Computing ridge predictions
+    # @staticmethod
+    # def _ridge_prediction(XtX, alpha, Xty, x_test):
+    #     """
+    #     Computing ridge predictions
 
-        Parameters:
-        ------------
-        XtX: X'X
-        alpha: tuning parameter
-        Xty: X'y
-        x_test: test data
+    #     Parameters:
+    #     ------------
+    #     XtX: X'X
+    #     alpha: tuning parameter
+    #     Xty: X'y
+    #     x_test: test data
 
-        """
-        A = XtX + np.eye(XtX.shape[1]) * alpha
-        c, lower = cho_factor(A)
-        ridge_beta = cho_solve((c, lower), Xty)
-        y_pred = np.dot(x_test, ridge_beta)
-        return y_pred
+    #     """
+    #     A = XtX + np.eye(XtX.shape[1]) * alpha
+    #     c, lower = cho_factor(A)
+    #     ridge_beta = cho_solve((c, lower), Xty)
+    #     y_pred = np.dot(x_test, ridge_beta)
+    #     return y_pred
 
     def level0_ridge_block(self, block, threads):
         """
@@ -117,45 +149,55 @@ class Relatedness:
         proj_inner_block = np.dot(resid_block.T, resid_block)  # Z'(I-M)Z, (m, m)
         proj_block_ldrs = np.dot(resid_block.T, self.resid_ldrs)  # Z'(I-M)\Xi, (m, r)
 
-        futures = []
-        partial_function = partial(
-            self._level0_ridge_block,
-            level0_preds,
-            resid_block,
-            proj_inner_block,
-            proj_block_ldrs,
-        )
+        # futures = []
+        # partial_function = partial(
+        #     self._level0_ridge_block,
+        #     level0_preds,
+        #     resid_block,
+        #     proj_inner_block,
+        #     proj_block_ldrs,
+        # )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            for _, test_idxs in self.kf.split(range(self.n)):
-                futures.append(executor.submit(partial_function, test_idxs))
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        #     for _, test_idxs in self.kf.split(range(self.n)):
+        #         futures.append(executor.submit(partial_function, test_idxs))
 
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as exc:
-                    self.logger.info(f"Generated an exception: {exc}.")
+        #     for future in concurrent.futures.as_completed(futures):
+        #         try:
+        #             future.result()
+        #         except Exception as exc:
+        #             self.logger.info(f"Generated an exception: {exc}.")
+
+        for _, test_idxs in self.kf.split(range(self.n)):
+            self._level0_ridge_block(
+                level0_preds, resid_block, proj_inner_block, proj_block_ldrs, test_idxs,
+                self.r, self.shrinkage_level0, self.resid_ldrs, 
+            )
 
         return level0_preds
-
+    
+    @staticmethod
+    @njit(parallel=True, fastmath=True)
     def _level0_ridge_block(
-        self, level0_preds, resid_block, proj_inner_block, proj_block_ldrs, test_idxs
+        level0_preds, resid_block, proj_inner_block, proj_block_ldrs, test_idxs, 
+        r, shrinkage_level0, resid_ldrs, 
     ):
         """
         Computing level 0 ridge prediction for a genotype block with a group of subjects held out
 
         """
         _level0_preds = np.zeros(
-            (self.r, len(test_idxs), len(self.shrinkage_level0)), dtype=np.float32
+            (r, len(test_idxs), len(shrinkage_level0)), dtype=np.float32
         )
-        proj_inner_block_ = proj_inner_block - np.dot(
+        proj_inner_block_ = proj_inner_block - dot(
             resid_block[test_idxs].T, resid_block[test_idxs]
         )
-        proj_block_ldrs_ = proj_block_ldrs - np.dot(
-            resid_block[test_idxs].T, self.resid_ldrs[test_idxs]
+        proj_block_ldrs_ = proj_block_ldrs - dot(
+            resid_block[test_idxs].T, resid_ldrs[test_idxs]
         )
-        for i, param in enumerate(self.shrinkage_level0):
-            preds = self._ridge_prediction(
+        for i in prange(len(shrinkage_level0)):
+            param = shrinkage_level0[i]
+            preds = ridge_prediction(
                 proj_inner_block_, param, proj_block_ldrs_, resid_block[test_idxs]
             )
             # level0_preds[:, test_idxs, i] = preds.T
@@ -168,7 +210,8 @@ class Relatedness:
 
         Parameters:
         ------------
-        level0_preds_reader: a h5 data reader and each time read a (n by n_params by n_blocks) array into memory
+        level0_preds_reader: a h5 data reader and each time read a 
+            (n by n_params by n_blocks) array into memory
         chr_idxs: a dictionary of chromosome: [blocks idxs]
         threads: number of threads
 
@@ -183,22 +226,25 @@ class Relatedness:
         ## get column idxs for each CHR after reshaping
         reshaped_idxs = self._get_reshaped_idxs(chr_idxs)
 
-        partial_function = partial(
-            self._level1_ridge,
-            level0_preds_reader,
-            best_params,
-            chr_preds,
-            reshaped_idxs,
-        )
+        # partial_function = partial(
+        #     self._level1_ridge,
+        #     level0_preds_reader,
+        #     best_params,
+        #     chr_preds,
+        #     reshaped_idxs,
+        # )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [executor.submit(partial_function, j) for j in range(self.r)]
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        #     futures = [executor.submit(partial_function, j) for j in range(self.r)]
 
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as exc:
-                    self.logger.info(f"Generated an exception: {exc}.")
+        #     for future in concurrent.futures.as_completed(futures):
+        #         try:
+        #             future.result()
+        #         except Exception as exc:
+        #             self.logger.info(f"Generated an exception: {exc}.")
+        
+        for j in range(self.r):
+            self._level1_ridge(level0_preds_reader, best_params, chr_preds, reshaped_idxs, j)
 
         return chr_preds
 
@@ -273,16 +319,28 @@ class Relatedness:
             test_y = ldr[test_idxs]
             inner_train_x = inner_level0_preds - np.dot(test_x.T, test_x)
             train_xy = level0_preds_ldr - np.dot(test_x.T, test_y)
-            for j, param in enumerate(self.shrinkage_level1):
-                predictions = self._ridge_prediction(
-                    inner_train_x, param, train_xy, test_x
-                )
-                mse[i, j] = np.sum((test_y - predictions) ** 2)  # squared L2 norm
+            # for j, param in enumerate(self.shrinkage_level1):
+            #     predictions = ridge_prediction(
+            #         inner_train_x, param, train_xy, test_x
+            #     )
+            #     mse[i, j] = np.sum((test_y - predictions) ** 2)  # squared L2 norm
+            self._get_mse(mse, i, inner_train_x, train_xy, test_x, test_y, self.shrinkage_level1
+            )
         mse = np.sum(mse, axis=0) / self.n
         min_idx = np.argmin(mse)
         best_param = self.shrinkage_level1[min_idx]
 
         return best_param
+    
+    @staticmethod
+    @njit(parallel=True, fastmath=True)
+    def _get_mse(mse, i, inner_train_x, train_xy, test_x, test_y, shrinkage_level1):
+        for j in prange(len(shrinkage_level1)):
+            param = shrinkage_level1[j]
+            predictions = ridge_prediction(
+                inner_train_x, param, train_xy, test_x
+            )
+            mse[i, j] = np.sum((test_y - predictions) ** 2)  # squared L2 norm
 
     def _chr_preds_ldr(self, best_param, level0_preds, ldr, ldr_std, reshaped_idxs):
         """
@@ -315,7 +373,7 @@ class Relatedness:
             mask[idxs] = False
             inner_loco_level0_preds = inner_level0_preds[mask, :][:, mask]
             loco_preds_ldr = preds_ldr[mask]
-            loco_prediction = self._ridge_prediction(
+            loco_prediction = ridge_prediction(
                 inner_loco_level0_preds,
                 best_param,
                 loco_preds_ldr,
@@ -631,8 +689,10 @@ def run(args, log):
         # initialize a remover and do level 0 ridge prediction
         n_variants = gprocessor.snps_mt.count_rows()
         n_blocks = len(blocks)
+        ldrs_data = np.array(ldrs.data, dtype=np.float32)
+        covar_data = np.array(covar.data, dtype=np.float32)
         relatedness_remover = Relatedness(
-            n_variants, n_blocks, np.array(ldrs.data), np.array(covar.data)
+            n_variants, n_blocks, ldrs_data, covar_data
         )
 
         log.info(f"Doing level0 ridge regression ...")
