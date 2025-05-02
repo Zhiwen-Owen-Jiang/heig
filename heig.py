@@ -11,7 +11,7 @@ from heig.utils import GetLogger, sec_to_str
 # os.environ['NUMEXPR_MAX_THREADS'] = '8'
 # numexpr.set_num_threads(int(os.environ['NUMEXPR_MAX_THREADS']))
 
-VERSION = "1.4.0-alpha"
+VERSION = "1.5.0-alpha"
 MASTHEAD = (
     "******************************************************************************\n"
 )
@@ -199,7 +199,7 @@ common_parser.add_argument(
     "--image",
     help=(
         "Directory to processed raw images in HDF5 format. "
-        "Supported modules: --fpca, --make-ldr."
+        "Supported modules: --read-image, --fpca, --make-ldr."
     ),
 )
 common_parser.add_argument(
@@ -207,30 +207,30 @@ common_parser.add_argument(
     type=int,
     help=(
         "Number of LDRs. Supported modules: "
-        "--make-ldr, --fpca, --heri-gc, --voxel-gwas, --gwas, --cluster, "
+        "--make-ldr, --fpca, --heri-gc, --voxel-gwas, --gwas, --partition-h2, --cluster, "
         "--relatedness, --rv-null, --make-rv-sumstats, --rv-coding, "
-        "--rv-noncoding, --rv, --rv-cluster."
+        "--rv-noncoding, --rv, --rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
     "--ldr-sumstats",
     help=(
         "Prefix of preprocessed LDR GWAS summary statistics. "
-        "Supported modules: --heri-gc, --voxel-gwas."
+        "Supported modules: --heri-gc, --voxel-gwas, --partition-h2."
     ),
 )
 common_parser.add_argument(
     "--bases",
     help=(
         "Directory to functional bases. Supported modules: "
-        "--make-ldr, --heri-gc, --voxel-gwas, --cluster, --rv-null."
+        "--make-ldr, --partition-h2, --heri-gc, --voxel-gwas, --cluster, --rv-null."
     ),
 )
 common_parser.add_argument(
     "--ldr-cov",
     help=(
         "Directory to variance-covariance marix of LDRs. "
-        "Supported modules: --heri-gc, --voxel-gwas, --cluster."
+        "Supported modules: --heri-gc, --voxel-gwas, --partition-h2, --cluster."
     ),
 )
 common_parser.add_argument(
@@ -244,7 +244,7 @@ common_parser.add_argument(
         "Each row contains only one subject. "
         "Supported modules: --read-image, --fpca, --make-ldr, --ld-matrix, "
         "--gwas, --cluster, --make-mt, --relatedness, --rv-null, --make-rv-sumstats, "
-        "--rv-cluster."
+        "--rv-cluster, --rv-cond, --permute."
     ),
 )
 common_parser.add_argument(
@@ -258,7 +258,8 @@ common_parser.add_argument(
         "Each row contains only one subject. "
         "If a subject appears in both --keep and --remove, --remove takes precedence. "
         "Supported modules: --read-image, --fpca, --make-ldr, --gwas, --cluster, "
-        "--make-mt, --relatedness, --rv-null, --make-rv-sumstats, --rv-cluster."
+        "--make-mt, --relatedness, --rv-null, --make-rv-sumstats, --rv-cluster, "
+        "--rv-cond, --permute."
     ),
 )
 common_parser.add_argument(
@@ -271,7 +272,7 @@ common_parser.add_argument(
         "Other columns will be ignored. "
         "Each row contains only one SNP. "
         "Supported modules: --heri-gc, --ld-matrix, --voxel-gwas, --gwas, "
-        "--cluster, --make-mt, --relatedness."
+        "--partition-h2, --cluster, --make-mt, --relatedness."
     ),
 )
 common_parser.add_argument(
@@ -284,7 +285,7 @@ common_parser.add_argument(
         "Other columns will be ignored. "
         "Each row contains only one variant. "
         "Supported modules: --make-mt, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv-annot, --rv, --rv-cluster."
+        "--rv-annot, --rv, --rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -297,7 +298,7 @@ common_parser.add_argument(
         "Other columns will be ignored. "
         "Each row contains only one SNP. "
         "Supported modules: --heri-gc, --ld-matrix, --voxel-gwas, --gwas, "
-        "--cluster, --make-mt, --relatedness."
+        "--partition-h2, --cluster, --make-mt, --relatedness."
     ),
 )
 common_parser.add_argument(
@@ -310,7 +311,7 @@ common_parser.add_argument(
         "Other columns will be ignored. "
         "Each row contains only one variant. "
         "Supported modules: --make-mt, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv-annot, --rv, --rv-cluster."
+        "--rv-annot, --rv, --rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -320,7 +321,7 @@ common_parser.add_argument(
         "Minimum minor allele frequency for screening variants. "
         "Supported modules: --ld-matrix, --sumstats, --gwas, --cluster, --make-mt, "
         "--relatedness, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv, --rv-cluster."
+        "--rv, --rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -328,9 +329,9 @@ common_parser.add_argument(
     type=float,
     help=(
         "Maximum minor allele frequency for screening variants. "
-        "Supported modules: --sumstats, --gwas, --cluster, --make-mt, "
+        "Supported modules: --ld-matrix, --sumstats, --gwas, --cluster, --make-mt, "
         "--relatedness, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv, --rv-cluster."
+        "--rv, --rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -338,9 +339,9 @@ common_parser.add_argument(
     type=int,
     help=(
         "Minimum minor allele count for screening variants. "
-        "Supported modules: --ld-matrix, --sumstats, --gwas, --cluster, --make-mt, "
+        "Supported modules: --gwas, --cluster, --make-mt, "
         "--relatedness, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv, --rv-cluster, --rv-single."
+        "--rv, --rv-cluster, --rv-cond, --rv-single, --rv-permute."
     ),
 )
 common_parser.add_argument(
@@ -348,9 +349,9 @@ common_parser.add_argument(
     type=int,
     help=(
         "Maximum minor allele count for screening variants. "
-        "Supported modules: --sumstats, --gwas, --cluster, --make-mt, "
+        "Supported modules: --gwas, --cluster, --make-mt, "
         "--relatedness, --make-rv-sumstats, --rv-coding, --rv-noncoding, "
-        "--rv, --rv-cluster, --rv-single."
+        "--rv, --rv-cluster, --rv-cond, --rv-single, --rv-permute."
     ),
 )
 common_parser.add_argument(
@@ -409,15 +410,17 @@ common_parser.add_argument(
         "Cross-chromosome is not allowed. And the end position must "
         "be greater than the start position. "
         "Supported modules: --voxel-gwas, --gwas, --cluster, --make-mt, --make-rv-sumstats, "
-        "--rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "--rv-annot, --rv-coding, --rv-noncoding, --rv, --rv-cluster, --rv-cond, --rv-single, "
+        "--permute."
     ),
 )
 common_parser.add_argument(
     "--voxels", "--voxel",
     help=(
         "One-based index of voxel or a file containing voxels. "
-        "Supported modules: --voxel-gwas, --cluster, --rv-coding, --rv-noncoding, --rv, "
-        "--rv-cluster."
+        "Supported modules: --read-image, --fpca, --make-ldr, "
+        "--voxel-gwas, --partition-h2, --cluster, --rv-coding, --rv-noncoding, --rv, "
+        "--rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -431,7 +434,8 @@ common_parser.add_argument(
     "--geno-mt",
     help=(
         "Directory to genotype MatrixTable. "
-        "Supported modules: --gwas, --make-mt, --cluster, --relatedness."
+        "Supported modules: --gwas, --make-mt, --cluster, --relatedness, "
+        "--rv-cond."
     ),
 )
 common_parser.add_argument(
@@ -440,7 +444,8 @@ common_parser.add_argument(
     help=(
         "Using reference genome GRCh37. Otherwise using GRCh38. "
         "Supported modules: --gwas, --make-mt, --cluster, --relatedness, --rv-annot, "
-        "--make-rv-sumstats, --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "--make-rv-sumstats, --rv-coding, --rv-noncoding, --rv, --rv-cluster, "
+        "--rv-cond, --rv-single, --permute"
     ),
 )
 common_parser.add_argument(
@@ -476,9 +481,9 @@ common_parser.add_argument(
     type=int,
     help=(
         "number of threads. "
-        "Supported modules: --read-image, --sumstats, --fpca, "
-        "--voxel-gwas, --heri-gc, --make-ldr, --cluster, --relatedness, "
-        "--rv-cluster."
+        "Supported modules: --read-image, --sumstats, --voxel-gwas, "
+        "--heri-gc, --make-ldr, --partition-h2, --cluster, --relatedness, "
+        "--make-rv-sumstats, --rv-single, --tfce."
     ),
 ),
 common_parser.add_argument(
@@ -487,14 +492,15 @@ common_parser.add_argument(
         "Spark configuration file. "
         "Supported modules: --relatedness, --gwas, --make-mt, --cluster, "
         "--make-rv-sumstats, --rv-annot, --rv-coding, --rv-noncoding, --rv, "
-        "--rv-cluster."
+        "--rv-cluster, --rv-cond, --rv-single, --permute."
     ),
 ),
 common_parser.add_argument(
     "--loco-preds",
     help=(
         "Leave-one-chromosome-out prediction file. "
-        "Supported modules: --gwas, --cluster, --make-rv-sumstats, --rv-cluster."
+        "Supported modules: --gwas, --cluster, --make-rv-sumstats, --rv-cluster, "
+        "--rv-cond, --permute."
     ),
 )
 common_parser.add_argument(
@@ -502,7 +508,8 @@ common_parser.add_argument(
     help=(
         "Directory to processed functional annotations "
         "for rare variant analysis in hail.Table format. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --rv-single."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, "
+        "--rv-cond, --rv-single, --permute."
     ),
 )
 common_parser.add_argument(
@@ -510,14 +517,14 @@ common_parser.add_argument(
     "--rv-sumstats",
     help=(
         "Prefix of rare variants summary statistics (part1) specific to images. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-single."
     )
 )
 common_parser.add_argument(
     "--rv-sumstats-part2",
     help=(
         "Prefix of rare variants summary statistics (part1) not specific to images. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-single."
     )
 )
 common_parser.add_argument(
@@ -537,7 +544,8 @@ common_parser.add_argument(
         "'enhancer_cage', 'enhancer_dhs') for noncoding variants, "
         "where 'all' means all categories; "
         "multiple categories should be separated by comma. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv-cluster, --rv-single."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv-cluster, --rv-cond, "
+        "--rv-single, --tfce, --permute."
     ),
 )
 common_parser.add_argument(
@@ -547,7 +555,8 @@ common_parser.add_argument(
         "The file should be tab or space delimited without header. "
         "Each row contains only one variant set in format "
         "<gene name> <chr:start,chr:end>. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, "
+        "--rv-cond, --permute."
     )
 )
 common_parser.add_argument(
@@ -558,7 +567,8 @@ common_parser.add_argument(
         "can be specified in a decimal 0.00000005 "
         "or in scientific notation 5e-08. "
         "Supported modules: --voxel-gwas, --cluster, --rv-coding, "
-        "--rv-noncoding, --rv, --rv-cluster."
+        "--rv-noncoding, --rv, --rv-cluster, --rv-cond, --rv-single, --tfce, "
+        "--permute."
     ),
 )
 common_parser.add_argument(
@@ -585,14 +595,14 @@ common_parser.add_argument(
     "--null-model",
     help=(
         "Directory to null model. "
-        "Supported modules: --make-rv-sumstats, --rv-cluster."
+        "Supported modules: --make-rv-sumstats, --rv-cluster, --rv-cond, --permute."
     )
 )
 common_parser.add_argument(
     "--sparse-genotype",
     help=(
         "Prefix of sparse genotype data. "
-        "Supported modules: --make-rv-sumstats, --rv-cluster."
+        "Supported modules: --make-rv-sumstats, --rv-cluster, --rv-cond, --permute."
     )
 )
 common_parser.add_argument(
@@ -600,7 +610,7 @@ common_parser.add_argument(
     type=float,
     help=(
         "Number of bootstrap samples or number of points in a null distribution. "
-        "Supported modules: --cluster, --rv-cluster."
+        "Supported modules: --cluster, --rv-cluster, --permute."
     )
 )
 common_parser.add_argument(
@@ -608,7 +618,7 @@ common_parser.add_argument(
     type=int,
     help=(
         "The minimum of cumulative MAC in a variant set. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --permute."
     )
 )
 common_parser.add_argument(
@@ -616,7 +626,7 @@ common_parser.add_argument(
     type=int,
     help=(
         "The maximum of cumulative MAC in a variant set. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --permute."
     )
 )
 common_parser.add_argument(
@@ -626,7 +636,7 @@ common_parser.add_argument(
         "It should be a NIFTI file (nii.gz) for NIFTI images; "
         "a GIFTI file (gii) for CIFTI2 surface data; "
         "a FreeSurfer surface mesh file (.pial) for FreeSurfer morphometry data. "
-        "Supported modules: --image, --tfce."
+        "Supported modules: --read-image, --tfce."
     ),
 )
 common_parser.add_argument(
@@ -636,7 +646,7 @@ common_parser.add_argument(
         "Must be one or some of ('burden', 'skat', 'staar'). "
         "Multiple tests are separated by comma. "
         "STAAR will run all tests and combine individual p-values. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --rv-cond."
     ),
 )
 common_parser.add_argument(
@@ -644,14 +654,14 @@ common_parser.add_argument(
     action="store_true", 
     help=(
         "Using annotation weights. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --rv-cond."
     )
 )
 common_parser.add_argument(
     "--perm",
     help=(
         "Directory to permutation results. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, --rv-cond."
     )
 )
 
@@ -1031,7 +1041,6 @@ def check_accepted_args(module, args, log):
             "remove",
             "bw_opt",
             "skip_smoothing",
-            "threads",
         },
         "make_ldr": {
             "out",
@@ -1131,7 +1140,6 @@ def check_accepted_args(module, args, log):
             "voxels",
             "ldr_sumstats",
             "ldr_cov",
-            "bases",
             "threads",
         },
         "relatedness": {
@@ -1185,7 +1193,6 @@ def check_accepted_args(module, args, log):
             "grch37",
             "skip_qc",
             "lift_over",
-            "threads",
         },
         "rv_null": {
             "rv_null",
@@ -1197,7 +1204,6 @@ def check_accepted_args(module, args, log):
             "cat_covar_list",
             "keep",
             "remove",
-            "threads",
         },
         "make_rv_sumstats":{
             "make_rv_sumstats",
