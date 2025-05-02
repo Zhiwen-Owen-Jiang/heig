@@ -110,18 +110,25 @@ class KernelSmooth:
 
         return sparse_sm_weight
 
-    @staticmethod
-    def _calculate_diff(images_, sparse_sm_weight):
-        return np.sum((images_ - images_ @ sparse_sm_weight.T) ** 2)
+    # @staticmethod
+    # def _calculate_diff(images_, sparse_sm_weight):
+    #     return np.sum((images_ - images_ @ sparse_sm_weight.T) ** 2)
 
     def _calculate_diff_parallel(self, sparse_sm_weight, threads):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [
-                executor.submit(self._calculate_diff, images_, sparse_sm_weight)
-                for images_, _ in self.images.image_reader()
-            ]
-            diff = [future.result() for future in futures]
-        mean_diff = np.sum(diff) / self.n
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        #     futures = [
+        #         executor.submit(self._calculate_diff, images_, sparse_sm_weight)
+        #         for images_, _ in self.images.image_reader()
+        #     ]
+        #     diff = [future.result() for future in futures]
+        # mean_diff = np.sum(diff) / self.n
+        
+        mean_diff = list()
+        for images_, _ in self.images.image_reader():
+            mean_diff.append(
+                np.sum((images_ - images_ @ sparse_sm_weight.T) ** 2)
+            )
+        mean_diff = np.sum(mean_diff) / self.n
 
         return mean_diff
 
@@ -174,20 +181,24 @@ class LocalLinear(KernelSmooth):
         """
         sparse_sm_weight = dok_matrix((self.N, self.N), dtype=np.float32)
 
-        partial_function = partial(self._sm_weight, bw)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = {
-                executor.submit(partial_function, idx): idx for idx in range(self.N)
-            }
+        # partial_function = partial(self._sm_weight, bw)
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        #     futures = {
+        #         executor.submit(partial_function, idx): idx for idx in range(self.N)
+        #     }
 
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    idx = futures[future]
-                    sm_weight, large_weight_idxs = future.result()
-                    sparse_sm_weight[idx, large_weight_idxs] = sm_weight
-                except Exception as exc:
-                    executor.shutdown(wait=False)
-                    raise RuntimeError(f"Computation terminated due to error: {exc}")
+        #     for future in concurrent.futures.as_completed(futures):
+        #         try:
+        #             idx = futures[future]
+        #             sm_weight, large_weight_idxs = future.result()
+        #             sparse_sm_weight[idx, large_weight_idxs] = sm_weight
+        #         except Exception as exc:
+        #             executor.shutdown(wait=False)
+        #             raise RuntimeError(f"Computation terminated due to error: {exc}")
+        
+        for idx in range(self.N):
+            sm_weight, large_weight_idxs = self._sm_weight(bw, idx)
+            sparse_sm_weight[idx, large_weight_idxs] = sm_weight
 
         nonzero_weights = np.sum(sparse_sm_weight != 0, axis=0)
         if np.mean(nonzero_weights) > self.N // 10:
