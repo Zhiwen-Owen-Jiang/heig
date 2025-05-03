@@ -4,10 +4,11 @@ HEIG is a comprehensive toolbox for efficiently conducting joint analysis for la
 The analyses incorporated in HEIG:
 - Voxelwise genome-wide association analysis (VGWAS), including effcient GWAS for high-dimensional non-imaging phenotypes
 - Voxelwise heritability analysis
+- Partitioned heritability analysis (>= v1.5.0-alpha)
 - Genetic correlation analysis for pairs of voxels
 - Cross-trait genetic correlation between voxels and non-imaging phenotypes
 - Correction for sample relatedness across voxels
-- Voxelwise rare variant analysis (coding and non-coding variants with various variant categories)
+- Voxelwise rare variant analysis (coding and non-coding variants with various variant categories, >= v1.4.0-alpha)
 
 ## Version
 - [v1.0.0](https://github.com/Zhiwen-Owen-Jiang/heig/releases/tag/v1.0.0): initial version of HEIG.
