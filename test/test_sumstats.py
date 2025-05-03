@@ -181,8 +181,8 @@ class Test_check_input(unittest.TestCase):
             pos_col="pos",
             maf_col="maf",
             info_col="info",
-            maf_min=0.01,
-            info_min=0.9,
+            maf_min=None,
+            info_min=None,
         )
         self.assertEqual(args, true_args)
 
@@ -469,8 +469,8 @@ class Test_map_cols(unittest.TestCase):
             "P": None,
             "null_value": 0,
             "Z": None,
-            "maf_min": 0.01,
-            "info_min": 0.9,
+            "maf_min": None,
+            "info_min": None,
         }
         true_col_map2 = {
             "snp": "SNP",
@@ -529,6 +529,7 @@ class Test_GWAS(unittest.TestCase):
                 "SNP": ["rs2", "rs4"],
                 "A1": ["C", "C"],
                 "A2": ["A", "A"],
+                "MAF": [0.05, 0.1],
                 "N": [100, 100],
             }
         )
@@ -638,9 +639,12 @@ class Test_GWAS(unittest.TestCase):
 
         # effect and p, info
         true_snpinfo = pd.DataFrame(
-            {"SNP": ["rs4"], "A1": ["C"], "A2": ["A"], "N": [100]}
+            {"SNP": ["rs11", "rs2", "rs4"], 
+             "A1": ["T", "C", "C"], 
+             "A2": ["G", "A", "A"], 
+             "N": [100, 100, 100]}
         )
-        true_z = np.array([0.0]).reshape((1, 1))
+        true_z = np.array([-0.67448974, 0.0, 0.0], dtype=np.float32).reshape((3, 1))
         args = Args(
             y2_gwas=os.path.join(MAIN_DIR, "gwas1.txt"),
             snp_col="snp",
@@ -682,6 +686,7 @@ class Test_read_sumstats(unittest.TestCase):
                 "SNP": ["rs2", "rs4"],
                 "A1": ["C", "C"],
                 "A2": ["A", "A"],
+                "MAF": [0.05, 0.1],
                 "N": [100, 100],
             }
         )
@@ -701,6 +706,7 @@ class Test_extract_snps(unittest.TestCase):
                 "POS": [10],
                 "A1": ["C"],
                 "A2": ["A"],
+                "MAF": [0.05],
                 "N": [100],
             }
         )

@@ -185,7 +185,7 @@ class Test_load_nifti(unittest.TestCase):
             log,
         )
         img_reader = NIFTIReader(
-            img_files, ids, os.path.join(self.folder, "all_images.h5")
+            img_files, ids, None, os.path.join(self.folder, "all_images.h5")
         )
         img_reader.create_dataset(img_files[0])
         img_reader.read_save_image(1)
@@ -207,7 +207,7 @@ class Test_load_nifti(unittest.TestCase):
                 log,
             )
             img_reader = NIFTIReader(
-                img_files, ids, os.path.join(self.folder, f"dir{i}_images.h5")
+                img_files, ids, None, os.path.join(self.folder, f"dir{i}_images.h5")
             )
             img_reader.create_dataset(img_files[0])
             img_reader.read_save_image(1)
@@ -244,7 +244,7 @@ class Test_image_manager(unittest.TestCase):
         self.folder = os.path.join(MAIN_DIR, "test", "test_ksm")
 
     def test_keep(self):
-        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"))
+        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"), None)
         to_keep_id = pd.MultiIndex.from_tuples(
             [["s1000", "s1000"]], names=["FID", "IID"]
         )
@@ -261,7 +261,7 @@ class Test_image_manager(unittest.TestCase):
         assert_array_equal(self.true_ids[[0]], ids)
 
     def test_remove(self):
-        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"))
+        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"), None)
         to_remove_id = pd.MultiIndex.from_tuples(
             [["s1000", "s1000"]], names=["FID", "IID"]
         )
@@ -278,7 +278,7 @@ class Test_image_manager(unittest.TestCase):
         assert_array_equal(self.true_ids[[2, 4]], ids)
 
     def test_remove_nonexist(self):
-        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"))
+        image_manager = ImageManager(os.path.join(self.folder, "dir1_images.h5"), None)
         to_remove_id = pd.MultiIndex.from_tuples(
             [["s1000", "s1000"], ["s1010", "s1010"]], names=["FID", "IID"]
         )
@@ -295,7 +295,7 @@ class Test_image_manager(unittest.TestCase):
         assert_array_equal(self.true_ids[[2, 4]], ids)
 
     def test_doing_nothing(self):
-        image_manager = ImageManager(os.path.join(self.folder, "dir3_images.h5"))
+        image_manager = ImageManager(os.path.join(self.folder, "dir3_images.h5"), None)
         image_manager.keep_and_remove()
         image_manager.save(os.path.join(self.folder, "dir3_doing_nothing_images.h5"))
 
@@ -334,6 +334,7 @@ class Test_merge_images(unittest.TestCase):
         )
         merge_images(
             image_files,
+            None,
             os.path.join(self.folder, "dir12_keep_images.h5"),
             log,
             to_keep_ids,
@@ -354,7 +355,7 @@ class Test_merge_images(unittest.TestCase):
             os.path.join(self.folder, "dir1_images.h5"),
             os.path.join(self.folder, "dir2_images.h5"),
         ]
-        merge_images(image_files, os.path.join(self.folder, "dir12_images.h5"), log)
+        merge_images(image_files, None, os.path.join(self.folder, "dir12_images.h5"), log)
 
         with h5py.File(os.path.join(self.folder, "dir12_images.h5"), "r") as file:
             images = file["images"][:]
@@ -370,7 +371,7 @@ class Test_merge_images(unittest.TestCase):
             os.path.join(self.folder, "dir1_images.h5"),
             os.path.join(self.folder, "dir3_images.h5"),
         ]
-        merge_images(image_files, os.path.join(self.folder, "dir13_images.h5"), log)
+        merge_images(image_files, None, os.path.join(self.folder, "dir13_images.h5"), log)
 
         with h5py.File(os.path.join(self.folder, "dir13_images.h5"), "r") as file:
             images = file["images"][:]
@@ -395,6 +396,7 @@ class Test_merge_images(unittest.TestCase):
         )
         merge_images(
             image_files,
+            None,
             os.path.join(self.folder, "dir12_keep_remove_images.h5"),
             log,
             to_keep_ids,
@@ -424,6 +426,7 @@ class Test_merge_images(unittest.TestCase):
         with self.assertRaises(ValueError):
             merge_images(
                 image_files,
+                None,
                 os.path.join(self.folder, "dir12_keep_nonexist_images.h5"),
                 log,
                 to_keep_ids,
