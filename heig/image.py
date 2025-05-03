@@ -379,6 +379,15 @@ def merge_images(image_files, voxels, out_dir, log, keep_idvs=None, remove_idvs=
     """
     Merging multiple image files
 
+    Parameters:
+    ------------
+    image_files: a list of image files
+    voxels: a np.array of voxel indices to keep (0 based)
+    out_dir: a directory of output
+    log: a logger
+    keep_idvs: a pd.MultiIndex instance of IDs (FID, IID)
+    remove_idvs: a pd.MultiIndex instance of IDs (FID, IID)
+
     """
     try:
         image_managers = list()

@@ -108,12 +108,14 @@ class KernelSmooth:
         return sparse_sm_weight
 
     def _calculate_diff_parallel(self, sparse_sm_weight):
-        mean_diff = list()
+        """
+        Calculating MSE for the smoothed images
+        
+        """
+        mean_diff = 0 
         for images_, _ in self.images.image_reader():
-            mean_diff.append(
-                np.sum((images_ - images_ @ sparse_sm_weight.T) ** 2)
-            )
-        mean_diff = np.sum(mean_diff) / self.n
+            mean_diff += np.sum((images_ - images_ @ sparse_sm_weight.T) ** 2)
+        mean_diff /= self.n
 
         return mean_diff
 
@@ -232,7 +234,7 @@ def do_kernel_smoothing(
     sm_image_dir: directory to HDF5 file of smoothed images
     keep_idvs: pd.MultiIndex of subjects to keep
     remove_idvs: pd.MultiIndex of subjects to remove
-    bw_opt (1, ): a scalar of optimal bandwidth
+    bw_opt: a scalar of optimal bandwidth
     temp_path: temporay directory to save a sparse smoothing matrix
     skip_smoothing: if skip kernel smoothing
     log: a logger
@@ -392,7 +394,7 @@ def do_fpca(sm_image_dir, subject_wise_mean, args, log):
     ---------
     values (n_top, ): eigenvalues
     bases (N, n_top): functional bases
-    fpca.n_top (1, ): #PCs
+    fpca.n_top: #PCs
 
     """
     try:
@@ -439,7 +441,7 @@ class EigenValues:
         Parameters:
         ------------
         values (n_top, ): eigenvalues
-        max_n_pc (1, ): maximum #pc
+        max_n_pc: maximum #pc
 
         """
         self.values = values

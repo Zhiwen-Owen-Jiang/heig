@@ -66,10 +66,8 @@ class Relatedness:
 
     def __init__(self, n_snps, n_blocks, ldrs, covar):
         """
-        num_snps_part: a dict of chromosome: [LD block sizes]
-        snp_getter: a generator for getting SNPs
-        n_blocks: a positive number of genotype blocks
         n_snps: a positive number of total array snps
+        n_blocks: a positive number of genotype blocks
         ldrs: n by r matrix of LDRs
         covar: n by p matrix of covariates (preprocessed, including the intercept)
 

@@ -9,7 +9,6 @@ from heig.wgs.utils import read_genotype_data, init_hail, get_temp_path, clean
 """
 TODO: 
 1. consider providing more preprocessing options? such as --chr
-2. provide maf/info in gwas results
 
 """
 
@@ -58,11 +57,10 @@ def pandas_to_table(df, dir):
     Parameters:
     ------------
     df: a pd.DataFrame to convert, it must have a single index 'IID'
-    target_id: a list or np.array of ids of the another dataset
 
     Returns:
     ---------
-    index: a np.array of indices such that current_id[index] = target_id
+    table: a hail.Table
 
     """
     if not df.index.name == "IID":
