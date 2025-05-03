@@ -3,10 +3,8 @@ import logging
 import h5py
 import numpy as np
 import pandas as pd
-import concurrent.futures
 import scipy.sparse as sp
 from tqdm import tqdm
-from functools import partial
 from heig.utils import inv
 from scipy.sparse import csc_matrix, csr_matrix, dok_matrix, hstack, eye
 from sklearn.decomposition import IncrementalPCA

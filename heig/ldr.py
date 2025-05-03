@@ -1,9 +1,7 @@
-import concurrent.futures
 import numpy as np
 import pandas as pd
 import heig.input.dataset as ds
 from numba import njit, prange
-from collections import defaultdict
 from heig.image import ImageManager
 from heig.utils import inv
 
@@ -89,9 +87,7 @@ def image_recovery_quality(images, ldrs, bases):
 
     """
     rec_images = dot(bases, ldrs.T)
-    # rec_images = (rec_images - np.mean(rec_images, axis=0)) / np.std(rec_images, axis=0)
     rec_images = normalize_images(rec_images)
-    # corr = np.mean(images * rec_images, axis=0)
 
     corr = np.zeros(images.shape[1], dtype=np.float32)
     for i in range(images.shape[1]):
@@ -124,7 +120,6 @@ def construct_ldr_batch(
     ldrs_ = dot(images_, bases)
     ldrs[start_idx:end_idx] = ldrs_
     images_ = images_.T
-    # images_ = (images_ - np.mean(images_, axis=0)) / np.std(images_, axis=0)
     images_ = normalize_images(images_)
 
     for i in range(len(alt_n_ldrs_list)):
@@ -210,7 +205,6 @@ def run(args, log):
         # contruct ldrs
         ldrs = np.zeros((len(common_idxs), n_ldrs), dtype=np.float32)
         start_idx, end_idx = 0, 0
-        # rec_corr = defaultdict(lambda: np.zeros(len(common_idxs)))
         rec_corr = np.zeros((10, len(common_idxs)), dtype=np.float32)
         alt_n_ldrs_list = np.array([
             int(n_ldrs * prop)
@@ -218,34 +212,6 @@ def run(args, log):
         ])
 
         log.info(f"Constructing {n_ldrs} LDRs ...")
-        # with concurrent.futures.ThreadPoolExecutor(
-        #     max_workers=args.threads
-        # ) as executor:
-        #     futures = []
-        #     for images_, _ in images.image_reader():
-        #         start_idx = end_idx
-        #         end_idx += images_.shape[0]
-
-        #         futures.append(
-        #             executor.submit(
-        #                 construct_ldr_batch,
-        #                 images_,
-        #                 start_idx,
-        #                 end_idx,
-        #                 bases,
-        #                 alt_n_ldrs_list,
-        #                 rec_corr,
-        #                 ldrs,
-        #             )
-        #         )
-
-        #     for future in concurrent.futures.as_completed(futures):
-        #         try:
-        #             future.result()
-        #         except Exception as exc:
-        #             executor.shutdown(wait=False)
-        #             raise RuntimeError(f"Computation terminated due to error: {exc}")
-                
         for images_, _ in images.image_reader():
             start_idx = end_idx
             end_idx += images_.shape[0]
@@ -260,8 +226,6 @@ def run(args, log):
             )
 
         rec_corr_dict = dict()
-        # for alt_n_ldrs, corr in rec_corr.items():
-        #     rec_corr_dict[alt_n_ldrs] = round(np.mean(corr), 2)
         for i in range(len(alt_n_ldrs_list)):
             rec_corr_dict[alt_n_ldrs_list[i]] = round(np.mean(rec_corr[i]), 2)
 

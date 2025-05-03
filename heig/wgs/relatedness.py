@@ -1,16 +1,13 @@
 import os
 import h5py
 import logging
-import concurrent.futures
 import numpy as np
 import pandas as pd
 import hail as hl
 from tqdm import tqdm
 from collections import defaultdict
-from functools import partial
 from numba import njit, prange
 from sklearn.model_selection import KFold
-from scipy.linalg import cho_solve, cho_factor
 import heig.input.dataset as ds
 from heig.wgs.utils import init_hail, read_genotype_data, clean
 from hail.linalg import BlockMatrix
@@ -103,25 +100,6 @@ class Relatedness:
 
         self.logger = logging.getLogger(__name__)
 
-    # @staticmethod
-    # def _ridge_prediction(XtX, alpha, Xty, x_test):
-    #     """
-    #     Computing ridge predictions
-
-    #     Parameters:
-    #     ------------
-    #     XtX: X'X
-    #     alpha: tuning parameter
-    #     Xty: X'y
-    #     x_test: test data
-
-    #     """
-    #     A = XtX + np.eye(XtX.shape[1]) * alpha
-    #     c, lower = cho_factor(A)
-    #     ridge_beta = cho_solve((c, lower), Xty)
-    #     y_pred = np.dot(x_test, ridge_beta)
-    #     return y_pred
-
     def level0_ridge_block(self, block, threads):
         """
         Computing level 0 ridge prediction for a genotype block.
@@ -148,25 +126,6 @@ class Relatedness:
         resid_block = resid_block / np.std(resid_block, axis=0)
         proj_inner_block = np.dot(resid_block.T, resid_block)  # Z'(I-M)Z, (m, m)
         proj_block_ldrs = np.dot(resid_block.T, self.resid_ldrs)  # Z'(I-M)\Xi, (m, r)
-
-        # futures = []
-        # partial_function = partial(
-        #     self._level0_ridge_block,
-        #     level0_preds,
-        #     resid_block,
-        #     proj_inner_block,
-        #     proj_block_ldrs,
-        # )
-
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        #     for _, test_idxs in self.kf.split(range(self.n)):
-        #         futures.append(executor.submit(partial_function, test_idxs))
-
-        #     for future in concurrent.futures.as_completed(futures):
-        #         try:
-        #             future.result()
-        #         except Exception as exc:
-        #             self.logger.info(f"Generated an exception: {exc}.")
 
         for _, test_idxs in self.kf.split(range(self.n)):
             self._level0_ridge_block(
@@ -225,24 +184,6 @@ class Relatedness:
 
         ## get column idxs for each CHR after reshaping
         reshaped_idxs = self._get_reshaped_idxs(chr_idxs)
-
-        # partial_function = partial(
-        #     self._level1_ridge,
-        #     level0_preds_reader,
-        #     best_params,
-        #     chr_preds,
-        #     reshaped_idxs,
-        # )
-
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        #     futures = [executor.submit(partial_function, j) for j in range(self.r)]
-
-        #     for future in concurrent.futures.as_completed(futures):
-        #         try:
-        #             future.result()
-        #         except Exception as exc:
-        #             self.logger.info(f"Generated an exception: {exc}.")
-        
         for j in range(self.r):
             self._level1_ridge(level0_preds_reader, best_params, chr_preds, reshaped_idxs, j)
 
@@ -319,11 +260,6 @@ class Relatedness:
             test_y = ldr[test_idxs]
             inner_train_x = inner_level0_preds - np.dot(test_x.T, test_x)
             train_xy = level0_preds_ldr - np.dot(test_x.T, test_y)
-            # for j, param in enumerate(self.shrinkage_level1):
-            #     predictions = ridge_prediction(
-            #         inner_train_x, param, train_xy, test_x
-            #     )
-            #     mse[i, j] = np.sum((test_y - predictions) ** 2)  # squared L2 norm
             self._get_mse(mse, i, inner_train_x, train_xy, test_x, test_y, self.shrinkage_level1
             )
         mse = np.sum(mse, axis=0) / self.n
