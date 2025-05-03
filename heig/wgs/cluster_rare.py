@@ -461,7 +461,7 @@ def check_input(args, log):
         log.info("Set #permutation as 20")
     if args.mac_thresh is None:
         args.mac_thresh = 30
-        log.info(f"Set --mac-thresh as default 30")
+        # log.info(f"Set --mac-thresh as default 30")
     elif args.mac_thresh < 0:
         raise ValueError("--mac-thresh must be greater than 0")
     if args.sig_thresh is None:

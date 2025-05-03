@@ -458,13 +458,6 @@ common_parser.add_argument(
     ),
 )
 common_parser.add_argument(
-    "--not-save-genotype-data",
-    action="store_true",
-    help=(
-        "Not saving preprocessed genotype data (Deprecated)."
-    ),
-)
-common_parser.add_argument(
     "--partition",
     help=(
         "Genome partition file. "
@@ -544,8 +537,8 @@ common_parser.add_argument(
         "'enhancer_cage', 'enhancer_dhs') for noncoding variants, "
         "where 'all' means all categories; "
         "multiple categories should be separated by comma. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv-cluster, --rv-cond, "
-        "--rv-single, --tfce, --permute."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv-cond, "
+        "--rv-single, --tfce."
     ),
 )
 common_parser.add_argument(
@@ -555,8 +548,7 @@ common_parser.add_argument(
         "The file should be tab or space delimited without header. "
         "Each row contains only one variant set in format "
         "<gene name> <chr:start,chr:end>. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cluster, "
-        "--rv-cond, --permute."
+        "Supported modules: --rv-coding, --rv-noncoding, --rv, --rv-cond."
     )
 )
 common_parser.add_argument(
@@ -572,19 +564,10 @@ common_parser.add_argument(
     ),
 )
 common_parser.add_argument(
-    "--staar-only",
-    action="store_true",
-    help=(
-        "Saving STAAR-O results only, the omnibus test aggregating all "
-        "methods and functional annotations. "
-        "Supported modules: --rv-coding, --rv-noncoding, --rv."
-    )
-)
-common_parser.add_argument(
     "--mac-thresh",
     type=int,
     help=(
-        "A minor allele count threshold. "
+        "A minor allele count threshold (deprecated). "
         "Variants with a MAC less than the threshold "
         "will be marked as a super rare variants in ACAT-V analysis. "
         "Default: 10. "
@@ -1256,7 +1239,6 @@ def check_accepted_args(module, args, log):
             "maf_min",
             "mac_max",
             "mac_min",
-            "mac_thresh",
             "spark_conf",
             "grch37",
             "n_ldrs",
@@ -1284,7 +1266,6 @@ def check_accepted_args(module, args, log):
             "maf_min",
             "mac_max",
             "mac_min",
-            "mac_thresh",
             "spark_conf",
             "grch37",
             "n_ldrs",
@@ -1310,7 +1291,6 @@ def check_accepted_args(module, args, log):
             "maf_min",
             "mac_max",
             "mac_min",
-            "mac_thresh",
             "spark_conf",
             "variant_sets",
             "grch37",
@@ -1377,12 +1357,9 @@ def check_accepted_args(module, args, log):
             "maf_max",
             "mac_max",
             "mac_min",
-            "mac_thresh",
             "chr_interval",
             "loco_preds",
             "annot_ht",
-            "variant_sets",
-            "variant_category",
             "cmac_min",
             "cmac_max",
             "rv_tests",
@@ -1409,7 +1386,6 @@ def check_accepted_args(module, args, log):
             "maf_max",
             "mac_max",
             "mac_min",
-            "mac_thresh",
             "chr_interval",
             "chr_interval_cond",
             "loco_preds",
@@ -1477,8 +1453,6 @@ def check_accepted_args(module, args, log):
             "chr_interval",
             "loco_preds",
             "annot_ht",
-            "variant_sets",
-            "variant_category",
             "cmac_min",
             "cmac_max",
             "perm_list",

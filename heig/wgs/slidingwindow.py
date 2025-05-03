@@ -292,7 +292,7 @@ def check_input(args, log):
 
     if args.mac_thresh is None:
         args.mac_thresh = 10
-        log.info(f"Set --mac-thresh as default 10")
+        # log.info(f"Set --mac-thresh as default 10")
     elif args.mac_thresh < 0:
         raise ValueError("--mac-thresh must be greater than 0")
     

@@ -170,7 +170,7 @@ def check_input(args, log):
         args.rv_tests = ["staar"]
     if args.mac_thresh is None:
         args.mac_thresh = 10
-        log.info(f"Set --mac-thresh as default 10")
+        # log.info(f"Set --mac-thresh as default 10")
     elif args.mac_thresh < 0:
         raise ValueError("--mac-thresh must be greater than 0")
     if args.chr_interval_cond is not None:
