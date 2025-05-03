@@ -31,7 +31,7 @@ def check_input(args, log):
         args.effect_col = "beta,0"
         args.se_col = "standard_error"
         args.z_col = "t_stat"
-        args.maf_col = None
+        args.maf_col = "alt_allele_freq"
         args.info_col = None
         args.maf_min = None
         args.info_min = None
@@ -80,9 +80,6 @@ def check_input(args, log):
     elif args.maf_col is None and args.maf_min is not None:
         log.info("WARNING: ignoring --maf-min as --maf-col has not been provided.")
         args.maf_min = None
-    elif args.maf_col and args.maf_min is None:
-        log.info("Set minimum MAF as 0.9 by default.")
-        args.maf_min = 0.01
 
     if args.info_col is not None and args.info_min is not None:
         if args.info_min <= 0 or args.info_min >= 1:
@@ -90,9 +87,7 @@ def check_input(args, log):
     elif args.info_col is None and args.info_min:
         log.info("WARNING: ignoring --info-min as --info-col has not been provided.")
         args.info_min = None
-    elif args.info_col and args.info_min is None:
-        log.info("Set minimum INFO as 0.9 by default.")
-        args.info_min = 0.9
+
     if args.n is not None and args.n <= 0:
         raise ValueError("--n must be greater than 0")
 
@@ -361,7 +356,9 @@ class ProcessGWAS(ABC):
         pass
 
     def _save_snpinfo(self, snpinfo):
-        snpinfo.to_csv(f"{self.out_dir}.snpinfo", sep="\t", index=None, na_rep="NA")
+        snpinfo.to_csv(
+            f"{self.out_dir}.snpinfo", sep="\t", index=None, na_rep="NA", float_format="%.3e"
+        )
 
     @abstractmethod
     def process(self):
@@ -617,7 +614,10 @@ class GWASLDR(ProcessGWAS):
         if self.cols_map["null_value"] == 1:
             raise ValueError("the null value of LDR GWAS effect size must be 0")
         self._check_median(gwas_data["EFFECT"], "EFFECT", self.cols_map["null_value"])
-        orig_snps_list = gwas_data[["CHR", "POS", "SNP", "A1", "A2", "N"]]
+        if "MAF" in gwas_data.columns:
+            orig_snps_list = gwas_data[["CHR", "POS", "SNP", "A1", "A2", "MAF", "N"]]
+        else:
+            orig_snps_list = gwas_data[["CHR", "POS", "SNP", "A1", "A2", "N"]]
         valid_snp_idxs = np.ones(gwas_data.shape[0], dtype=bool)
 
         self.logger.info(f"Pruning SNPs for the first GWAS file ...")
@@ -912,7 +912,7 @@ class GWASHEIG(GWASLDR):
 
         """
         gwas_data = self._read_gwas(self.gwas_files[0])
-        orig_snps_list = gwas_data[["CHR", "POS", "SNP", "A1", "A2", "N"]]
+        orig_snps_list = gwas_data[["CHR", "POS", "SNP", "A1", "A2", "MAF", "N"]]
         valid_snp_idxs = np.ones(gwas_data.shape[0], dtype=bool)
 
         self.logger.info(f"Pruning SNPs for the first GWAS file ...")
@@ -942,7 +942,7 @@ class GWASHEIG(GWASLDR):
         """
         gwas_data = pd.read_parquet(
             gwas_file,
-            columns=["chr", "pos", "rsid", "ref_allele", "alt_allele", "n_called"],
+            columns=["chr", "pos", "rsid", "ref_allele", "alt_allele", "alt_allele_freq", "n_called"],
             engine="pyarrow",
         )
         gwas_data = gwas_data.rename(self.cols_map2, axis=1)
