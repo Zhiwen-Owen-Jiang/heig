@@ -592,7 +592,9 @@ def parse_input(arg):
                     "if multiple files are provided, "
                     "they should be specified using `{}`, "
                     "e.g. `prefix_{stard:end}_suffix`. "
-                    "Both start and end are included"
+                    "Both start and end are included. "
+                    "Or they should be separated by comma, "
+                    "but do not mix both. "
                 )
             )
         if start > end:

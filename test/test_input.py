@@ -311,6 +311,10 @@ class Test_parse_input(unittest.TestCase):
         self.assertEqual(true_value, parse_input("file1:a"))
         true_value = ["file{}"]
         self.assertEqual(true_value, parse_input("file{}"))
+        true_value = ["file1", "file2"]
+        self.assertEqual(true_value, parse_input("file1,file2"))
+        true_value = ["file1", ":file2"]
+        self.assertEqual(true_value, parse_input("file1,:file2"))
 
     def test_parse_input_bad(self):
         with self.assertRaises(ValueError):
@@ -319,6 +323,8 @@ class Test_parse_input(unittest.TestCase):
             parse_input("file{1:a}.a")
         with self.assertRaises(ValueError):
             parse_input("file{:}.a")
+        with self.assertRaises(ValueError):
+            parse_input("file{:},a")
             
     def test_split_voxels(self):
         true_value = ["1"]
@@ -327,4 +333,3 @@ class Test_parse_input(unittest.TestCase):
         self.assertEqual(true_value, parse_input("1,2"))
         true_value = ["1", "2", "3"]
         self.assertEqual(true_value, parse_input("{1:3}"))
-

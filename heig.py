@@ -770,14 +770,16 @@ sumstats_parser.add_argument(
     "--ldr-gwas",
     help=(
         "Directory to raw LDR GWAS summary statistics files. "
-        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.txt`."
+        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.txt`, "
+        "or separated by comma, but do not mix {:} and comma together."
     ),
 )
 sumstats_parser.add_argument(
     "--ldr-gwas-heig",
     help=(
         "Directory to raw LDR GWAS summary statistics files produced by --gwas. "
-        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.parquet`. "
+        "Multiple files can be provided using {:}, e.g., `ldr_gwas{1:10}.parquet`, "
+        "or separated by comma, but do not mix {:} and comma together. "
         "One file may contain multiple LDRs. LDRs in these files must be in order."
     ),
 )
