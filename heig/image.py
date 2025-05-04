@@ -339,6 +339,24 @@ class ImageManager:
         for i in range(0, self.n_sub, batch_size):
             id_idx_chuck = self.id_idxs[i : i + batch_size]
             yield self.images[id_idx_chuck][:, self.voxels], self.ids[id_idx_chuck]
+            
+    def voxel_reader(self, batch_size=None):
+        """
+        Reading voxels in chunks as a generator
+
+        """
+        if batch_size is None:
+            memory_use = (
+                self.n_sub * self.n_voxels * np.dtype(np.float32).itemsize / (1024**3)
+            )
+            if memory_use <= 5:
+                batch_size = self.n_voxels
+            else:
+                batch_size = int(self.n_voxels / memory_use * 5)
+
+        for i in range(0, self.n_voxels, batch_size):
+            voxel_chuck = self.voxels[i : i + batch_size]
+            yield self.images[self.id_idxs][:, voxel_chuck], voxel_chuck    
 
     def save(self, out_dir):
         """

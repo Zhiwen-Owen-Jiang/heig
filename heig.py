@@ -475,7 +475,7 @@ common_parser.add_argument(
     help=(
         "number of threads. "
         "Supported modules: --read-image, --sumstats, --voxel-gwas, "
-        "--heri-gc, --make-ldr, --partition-h2, --cluster, --relatedness, "
+        "--heri-gc, --partition-h2, --cluster, --relatedness, "
         "--make-rv-sumstats, --rv-single, --tfce."
     ),
 ),
@@ -1038,7 +1038,6 @@ def check_accepted_args(module, args, log):
             "cat_covar_list",
             "keep",
             "remove",
-            "threads",
         },
         "ld_matrix": {
             "out",

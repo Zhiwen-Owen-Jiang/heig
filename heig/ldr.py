@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import heig.input.dataset as ds
-from numba import njit, prange
 from heig.image import ImageManager
 from heig.utils import inv
 
@@ -35,100 +34,54 @@ def projection_ldr(ldr, covar):
     return ldr_cov
 
 
-@njit
-def dot(A, B):
-    A = np.ascontiguousarray(A)
-    B = np.ascontiguousarray(B)
-    return np.dot(A, B)
-
-
-@njit(parallel=True, fastmath=True)
-def normalize_images(images_):
-    n_samples, n_features = images_.shape
-    means = np.zeros(n_features, dtype=images_.dtype)
-    stds = np.zeros(n_features, dtype=images_.dtype)
-
-    # Compute mean for each column (feature)
-    for j in prange(n_features):
-        for i in range(n_samples):
-            means[j] += images_[i, j]
-        means[j] /= n_samples
-
-    # Compute std for each column
-    for j in prange(n_features):
-        for i in range(n_samples):
-            diff = images_[i, j] - means[j]
-            stds[j] += diff * diff
-        stds[j] = np.sqrt(stds[j] / n_samples)
-
-    # Normalize
-    out = np.empty_like(images_)
-    for i in prange(n_samples):
-        for j in range(n_features):
-            out[i, j] = (images_[i, j] - means[j]) / stds[j]
-
-    return out
-
-
-@njit
-def image_recovery_quality(images, ldrs, bases):
-    """
-    Computing correlation between raw images and reconstructed images
-
-    Parameters:
-    ------------
-    images: a np.array of normalized raw images (N, r)
-    ldrs: a np.array of constructed LDRs (n, r)
-    bases: a np.array of corresponding bases (N, r)
-
-    Returns:
-    ---------
-    corr: a np.array of correlation coefficients between raw and reconstructed images
-
-    """
-    rec_images = dot(bases, ldrs.T)
-    rec_images = normalize_images(rec_images)
-
-    corr = np.zeros(images.shape[1], dtype=np.float32)
-    for i in range(images.shape[1]):
-        total = 0.0
-        for j in range(images.shape[0]):
-            total += images[j, i] * rec_images[j, i]
-        corr[i] = total / images.shape[0]
-
-    return corr
-
-
-@njit
-def construct_ldr_batch(
-    images_, start_idx, end_idx, bases, alt_n_ldrs_list, rec_corr, ldrs
+def evaluate_image_corr(
+    images_, start_idx, end_idx, ldrs_, bases, rec_corr
 ):
     """
-    Construting LDRs in batch
+    Evaluating image correlation between raw images and reconstructed images
 
     Parameters:
     ------------
     images_: a np.array of raw images (n1, N)
     start_idx: start index
     end_idx: end index
+    ldrs_: a np.array of LDRs (n1, r)
     bases: a np.array of bases (N, r)
-    alt_n_ldrs_list: a np.array of alternative number of LDRs
-    rec_corr: a np.array of reconstruction correlation
-    ldrs: a np.array of LDRs (n1, r)
+    rec_corr: a dict of reconstruction correlation of images
 
     """
-    ldrs_ = dot(images_, bases)
-    ldrs[start_idx:end_idx] = ldrs_
     images_ = images_.T
-    images_ = normalize_images(images_)
+    images_ = (images_ - np.mean(images_, axis=0)) / np.std(images_, axis=0)
 
-    for i in range(len(alt_n_ldrs_list)):
-        alt_n_ldrs = alt_n_ldrs_list[i]
-        image_rec_corr = image_recovery_quality(
-            images_, ldrs_[:, :alt_n_ldrs], bases[:, :alt_n_ldrs]
-        )
-        rec_corr[i][start_idx:end_idx] = image_rec_corr
+    for alt_n_ldrs in rec_corr.keys():
+        rec_images = np.dot(bases[:, :alt_n_ldrs], ldrs_[:, :alt_n_ldrs].T)
+        rec_images = (rec_images - np.mean(rec_images, axis=0)) / np.std(rec_images, axis=0)
+        rec_corr[alt_n_ldrs][start_idx:end_idx] = np.mean(images_ * rec_images, axis=0)
 
+
+def evaluate_voxel_corr(
+    images, start_idx, end_idx, ldrs, bases, rec_corr_voxels
+):
+    """
+    Evaluating voxel correlation between raw images and reconstructed images
+
+    Parameters:
+    ------------
+    images: a np.array of raw images with a batch of voxels (n, N1)
+    start_idx: start index
+    end_idx: end index
+    ldrs: a np.array of LDRs (n, r)
+    bases: a np.array of bases (N, r)
+    rec_corr_voxels: a dict of reconstruction correlation of voxels
+    
+    """
+    images = (images - np.mean(images, axis=0)) / np.std(images, axis=0)
+
+    for alt_n_ldrs in rec_corr_voxels.keys():
+        recon_images = np.dot(ldrs[:, :alt_n_ldrs], bases[start_idx:end_idx, :alt_n_ldrs].T)
+        recon_images = (recon_images - np.mean(recon_images, axis=0)) / np.std(recon_images, axis=0)
+        rec_corr_voxels[alt_n_ldrs][start_idx:end_idx] = np.mean(images * recon_images, axis=0)
+    
 
 def print_alt_corr(rec_corr, log):
     """
@@ -136,27 +89,26 @@ def print_alt_corr(rec_corr, log):
     using varying numbers of LDRs
 
     """
+    for alt_n_ldrs, corr in rec_corr.items():
+        rec_corr[alt_n_ldrs] = round(np.mean(corr), 2)
     max_key_len = max(len(str(key)) for key in rec_corr.keys())
     max_val_len = max(len(str(value)) for value in rec_corr.values())
     max_len = max([max_key_len, max_val_len])
     keys_str = "  ".join(f"{str(key):<{max_len}}" for key in rec_corr.keys())
     values_str = "  ".join(f"{str(value):<{max_len}}" for value in rec_corr.values())
 
-    log.info(
-        "Mean correlation between reconstructed images and raw images using varying numbers of LDRs:"
-    )
     log.info(keys_str)
     log.info(values_str)
 
-    max_corr = max(rec_corr.values())
-    max_n_ldrs = max(rec_corr.keys())
-    if max_corr < 0.85:
-        log.info(
-            (
-                f"Using {max_n_ldrs} LDRs can achieve a correlation coefficient of {max_corr}, "
-                "which might be too low, consider increasing LDRs.\n"
-            )
-        )
+    # max_corr = max(rec_corr.values())
+    # max_n_ldrs = max(rec_corr.keys())
+    # if max_corr < 0.85:
+    #     log.info(
+    #         (
+    #             f"Using {max_n_ldrs} LDRs can achieve a correlation coefficient of {max_corr}, "
+    #             "which might be too low, consider increasing LDRs.\n"
+    #         )
+    #     )
 
 
 def check_input(args):
@@ -204,32 +156,49 @@ def run(args, log):
 
         # contruct ldrs
         ldrs = np.zeros((len(common_idxs), n_ldrs), dtype=np.float32)
-        start_idx, end_idx = 0, 0
-        rec_corr = np.zeros((10, len(common_idxs)), dtype=np.float32)
         alt_n_ldrs_list = np.array([
             int(n_ldrs * prop)
             for prop in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)
         ])
 
         log.info(f"Constructing {n_ldrs} LDRs ...")
+        rec_corr_images = {
+            alt_n_ldrs: np.zeros(len(common_idxs), np.float32) 
+            for alt_n_ldrs in alt_n_ldrs_list
+        }
+        start_idx, end_idx = 0, 0
         for images_, _ in images.image_reader():
             start_idx = end_idx
-            end_idx += images_.shape[0]
-            construct_ldr_batch(
-                images_,
-                start_idx,
-                end_idx,
-                bases,
-                alt_n_ldrs_list,
-                rec_corr,
-                ldrs,
+            end_idx += images_.shape[0] 
+            ldrs_ = np.dot(images_, bases)
+            ldrs[start_idx:end_idx] = ldrs_
+            evaluate_image_corr(
+                images_, start_idx, end_idx, ldrs_, bases, rec_corr_images
             )
 
-        rec_corr_dict = dict()
-        for i in range(len(alt_n_ldrs_list)):
-            rec_corr_dict[alt_n_ldrs_list[i]] = round(np.mean(rec_corr[i]), 2)
+        # recon corr of images
+        log.info(
+            "Mean correlation between reconstructed images and raw images using varying numbers of LDRs:"
+        )
+        print_alt_corr(rec_corr_images, log)
+        
+        # recon corr of voxels
+        rec_corr_voxels = {
+            alt_n_ldrs: np.zeros(n_voxels, np.float32) 
+            for alt_n_ldrs in alt_n_ldrs_list
+        }
+        start_idx, end_idx = 0, 0
+        for images_, _ in images.voxel_reader():
+            start_idx = end_idx
+            end_idx += images_.shape[1]
+            evaluate_voxel_corr(
+                images_, start_idx, end_idx, ldrs, bases, rec_corr_voxels
+            )
 
-        print_alt_corr(rec_corr_dict, log)
+        log.info(
+            "Mean correlation between reconstructed voxels and raw voxels using varying numbers of LDRs:"
+        )
+        print_alt_corr(rec_corr_voxels, log)
 
         # process covar
         covar.keep_and_remove(common_idxs)
