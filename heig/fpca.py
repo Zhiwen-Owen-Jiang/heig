@@ -80,7 +80,7 @@ class KernelSmooth:
                     min_score = score[cii]
                     self._save_sparse_sm_weight(sparse_sm_weight, temp_path)
                 self.logger.info(
-                    f"The GCV score for bandwidth {np.round(bw, 3)} is {score[cii]:.3f}."
+                    f"The GCV score for bandwidth {np.round(bw, 3)} is {score[cii]:.3e}."
                 )
             else:
                 score[cii] = np.Inf
@@ -100,7 +100,7 @@ class KernelSmooth:
                 "the optimal bandwidth is invalid. Try to input one using --bw-opt"
             )
         self.logger.info(
-            f"The optimal bandwidth is {np.round(bw_opt, 3)} with GCV score {min_mse:.3f}."
+            f"The optimal bandwidth is {np.round(bw_opt, 3)} with GCV score {min_mse:.3e}."
         )
 
         sparse_sm_weight = self._load_sparse_sm_weight(temp_path)
@@ -400,30 +400,38 @@ def do_fpca(sm_image_dir, subject_wise_mean, args, log):
     try:
         sm_images = ImageManager(sm_image_dir)
 
-        # setup parameters
         log.info("\nDoing PCA ...")
-        fpca = FPCA(sm_images.n_sub, sm_images.n_voxels, args.all_pc, args.n_ldrs)
+        if args.all_pc:
+            image_reader = sm_images.image_reader(sm_images.n_sub)
+            images = next(image_reader)[0] - subject_wise_mean
+            _, singlar_values, bases = np.linalg.svd(images, full_matrices=False)
+            values = (singlar_values**2).astype(np.float32)
+            bases = bases.T.astype(np.float32)
+            n_top = sm_images.n_voxels
+        else:
+            fpca = FPCA(sm_images.n_sub, sm_images.n_voxels, args.all_pc, args.n_ldrs)
 
-        # incremental PCA
-        max_avail_n_sub = fpca.n_batches * fpca.batch_size
-        log.info(
-            (
-                f"Split the smoothed images into {fpca.n_batches} batch(es), "
-                f"with batch size {fpca.batch_size}."
+            # incremental PCA
+            max_avail_n_sub = fpca.n_batches * fpca.batch_size
+            log.info(
+                (
+                    f"Split the smoothed images into {fpca.n_batches} batch(es), "
+                    f"with batch size {fpca.batch_size}."
+                )
             )
-        )
 
-        image_reader = sm_images.image_reader(fpca.batch_size)
-        for _ in tqdm(
-            range(0, max_avail_n_sub, fpca.batch_size),
-            desc=f"{fpca.n_batches} batch(es)",
-        ):
-            fpca.ipca.partial_fit(next(image_reader)[0] - subject_wise_mean)
-        values = (fpca.ipca.singular_values_**2).astype(np.float32)
-        bases = fpca.ipca.components_.T
-        bases = bases.astype(np.float32)
+            image_reader = sm_images.image_reader(fpca.batch_size)
+            for _ in tqdm(
+                range(0, max_avail_n_sub, fpca.batch_size),
+                desc=f"{fpca.n_batches} batch(es)",
+            ):
+                fpca.ipca.partial_fit(next(image_reader)[0] - subject_wise_mean)
+            values = (fpca.ipca.singular_values_**2).astype(np.float32)
+            bases = fpca.ipca.components_.T
+            bases = bases.astype(np.float32)
+            n_top = fpca.n_top
 
-        return values, bases, fpca.n_top
+        return values, bases, n_top
 
     finally:
         if "sm_images" in locals():
