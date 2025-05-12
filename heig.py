@@ -106,7 +106,7 @@ herigc_parser.add_argument(
 )
 image_parser.add_argument("--read-image", action="store_true", help="Reading images.")
 fpca_parser.add_argument("--fpca", action="store_true", help="Functional PCA.")
-ldr_parser.add_argument("--make-ldr", action="store_true", help="Constructing LDRs.")
+ldr_parser.add_argument("--make-ldr", "--make-ldrs", action="store_true", help="Constructing LDRs.")
 make_ld_parser.add_argument(
     "--ld-matrix", action="store_true", help="Making an LD matrix and its inverse."
 )
@@ -360,7 +360,7 @@ common_parser.add_argument(
     help=(
         "A HWE p-value threshold. "
         "Variants with a HWE p-value less than the threshold "
-        "will be removed."
+        "will be removed. "
         "Supported modules: --make-mt, --gwas, --cluster, --relatedness, "
         "--make-rv-sumstats."
     ),
@@ -371,7 +371,7 @@ common_parser.add_argument(
     help=(
         "A genotype call rate threshold, equivalent to 1 - missing rate. "
         "Variants with a call rate less than the threshold "
-        "will be removed."
+        "will be removed. "
         "Supported modules: --gwas, --relatedness, --make-mt, --cluster, "
         "--make-rv-sumstats."
     ),
@@ -478,7 +478,7 @@ common_parser.add_argument(
         "--heri-gc, --partition-h2, --cluster, --relatedness, "
         "--make-rv-sumstats, --rv-single, --tfce."
     ),
-),
+)
 common_parser.add_argument(
     "--spark-conf",
     help=(
@@ -487,7 +487,7 @@ common_parser.add_argument(
         "--make-rv-sumstats, --rv-annot, --rv-coding, --rv-noncoding, --rv, "
         "--rv-cluster, --rv-cond, --rv-single, --permute."
     ),
-),
+)
 common_parser.add_argument(
     "--loco-preds",
     help=(

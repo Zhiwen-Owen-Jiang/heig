@@ -255,7 +255,7 @@ def save_images(out_dir, images, coord, id):
 
     """
     with h5py.File(out_dir, "w") as file:
-        dset = file.create_dataset("images", data=images, dtype="float32")
+        file.create_dataset("images", data=images, dtype="float32")
         file.create_dataset("id", data=np.array(id.tolist(), dtype="S10"))
         file.create_dataset("coord", data=coord)
 
@@ -463,6 +463,9 @@ def merge_images(image_files, voxels, out_dir, log, keep_idvs=None, remove_idvs=
                         dset[start:end] = images_
 
             output.create_dataset("id", data=np.array(ids_read.tolist(), dtype="S10"))
+
+        log.info(f"{len(ids_read)} subjects in the output dataset.")
+
     except:
         if os.path.exists(out_dir):
             os.remove(out_dir)

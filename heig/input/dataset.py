@@ -195,7 +195,7 @@ class Covar(Dataset):
             == qcovar_df.select_dtypes(include=np.number).shape[1]
         ):
             raise ValueError("did you forget some categorical variables?")
-        covar_df = pd.get_dummies(covar_df, drop_first=True).astype(int)
+        covar_df = pd.get_dummies(covar_df, drop_first=True, columns=catlist).astype(int)
         data = pd.concat([covar_df, qcovar_df], axis=1)
 
         return data

@@ -107,6 +107,7 @@ class Cluster:
         cols_map["A1"] = "alt_allele"
         cols_map["A2"] = "ref_allele"
         cols_map["Z"] = "t_stat"
+        cols_map["MAF"] = "alt_allele_freq"
 
         cols_map2 = dict()
         for k, v in cols_map.items():
