@@ -83,6 +83,15 @@ class Cluster:
         self.n_subs = resid_ldrs.shape[0]
         self.cols_map, self.cols_map2 = self._map_cols()
 
+        # using LOCO of chr21 to remove relatedness in resid LDRs
+        # and assuming the results are unrelated
+        # because here we are focusing on null distribution
+        # proxy contamination does not really matter
+        # this can significantly speed up the program
+        if self.loco_preds is not None:
+            self.resid_ldrs = self.resid_ldrs - self.loco_preds.data_reader(21)
+            self.loco_preds = None
+
         self.is_valid_snp, self.snpinfo = None, None
 
     @staticmethod
