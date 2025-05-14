@@ -104,7 +104,7 @@ herigc_parser.add_argument(
     action="store_true",
     help="Heritability and (cross-trait) genetic correlation analysis.",
 )
-image_parser.add_argument("--read-image", action="store_true", help="Reading images.")
+image_parser.add_argument("--read-image", "--read-images", action="store_true", help="Reading images.")
 fpca_parser.add_argument("--fpca", action="store_true", help="Functional PCA.")
 ldr_parser.add_argument("--make-ldr", "--make-ldrs", action="store_true", help="Constructing LDRs.")
 make_ld_parser.add_argument(
@@ -196,7 +196,7 @@ permutation_parser.add_argument(
 # common arguments
 common_parser.add_argument("--out", help="Prefix of output.")
 common_parser.add_argument(
-    "--image",
+    "--image", "--images",
     help=(
         "Directory to processed raw images in HDF5 format. "
         "Supported modules: --read-image, --fpca, --make-ldr."

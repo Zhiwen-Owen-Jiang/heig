@@ -513,12 +513,12 @@ class ProcessGWAS(ABC):
         for col in self.required_cols:
             if self.cols_map[col] not in header:
                 raise ValueError(
-                    f"{self.cols_map[col]} (case sensitive) cannot be found in {dir}"
+                    f"{self.cols_map[col]} (case sensitive) cannot be found in {gwas_file}"
                 )
 
         for col, _ in self.cols_map2.items():
             if col not in header:
-                raise ValueError(f"{col} (case sensitive) cannot be found in {dir}")
+                raise ValueError(f"{col} (case sensitive) cannot be found in {gwas_file}")
 
         return compression, delimiter
 
