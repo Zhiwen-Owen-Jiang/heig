@@ -541,6 +541,8 @@ def run(args, log):
             args.maf_min,
         )
         log.info(f"{len(common_snps)} SNPs remaining.")
+    else:
+        common_snps = None
 
     # reading bfiles
     log.info(f"Read bfile from {ld_bfile} with selected SNPs and individuals.")

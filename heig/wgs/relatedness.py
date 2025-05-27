@@ -671,7 +671,7 @@ def run(args, log):
         )
 
     finally:
-        if os.path.exists(l0_pred_file):
+        if "l0_pred_file" in locals() and os.path.exists(l0_pred_file):
             os.remove(l0_pred_file)
             log.info(f"Removed level0 ridge predictions at {l0_pred_file}")
 
