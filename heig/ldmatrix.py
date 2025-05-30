@@ -299,10 +299,11 @@ class LDmatrixBED(LDmatrix):
         prefix: prefix of LD matrix
 
         """
+        regu = int(str(regu).split(".")[1])
         if not inv:
-            prefix = f"{out}_ld_regu{int(regu*100)}"
+            prefix = f"{out}_ld_regu{regu}"
         else:
-            prefix = f"{out}_ld_inv_regu{int(regu*100)}"
+            prefix = f"{out}_ld_inv_regu{regu}"
 
         with h5py.File(f"{prefix}.ldmatrix", "w") as file:
             file.attrs["n_blocks"] = len(self.data)
@@ -421,6 +422,8 @@ def check_input(args):
         raise ValueError("--partition is required")
     if args.ld_regu is None:
         raise ValueError("--ld-regu is required")
+    if args.maf_min is None:
+        args.maf_min = 0.01
 
     # processing some arguments
     try:
@@ -489,9 +492,10 @@ def filter_maf(
 ):
     ld_bim2, *_ = gt.read_plink(ld_bfile, ld_keep_snp, ld_keep_idv)
     ld_inv_bim2, *_ = gt.read_plink(ld_inv_bfile, ld_inv_keep_snp, ld_inv_keep_idv)
-    common_snps = ld_bim2.loc[
-        (ld_bim2["MAF"] >= min_maf) & (ld_inv_bim2["MAF"] >= min_maf)
-    ]
+    if min_maf is not None:
+        common_snps = ld_bim2.loc[
+            (ld_bim2["MAF"] >= min_maf) & (ld_inv_bim2["MAF"] >= min_maf)
+        ]
 
     return common_snps
 
@@ -557,8 +561,8 @@ def run(args, log):
     genome_part = ds.read_geno_part(args.partition)
     log.info(f"{genome_part.shape[0]} genome blocks to partition.")
     num_snps_part, ld_bim = partition_genome(ld_bim, genome_part, log)
-    ld_inv_bim["block_idx"] = ld_bim["block_idx"]
-    ld_inv_bim["block_idx2"] = ld_bim["block_idx2"]
+    ld_inv_bim["block_idx"] = ld_bim["block_idx"].values
+    ld_inv_bim["block_idx2"] = ld_bim["block_idx2"].values
     log.info(
         (
             f"{sum(num_snps_part)} SNPs partitioned into {len(num_snps_part)} blocks, "
