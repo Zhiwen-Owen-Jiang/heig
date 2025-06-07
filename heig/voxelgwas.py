@@ -295,7 +295,7 @@ class VGWAS:
         return voxel_se
 
 
-def voxel_reader(n_snps, voxel_list):
+def voxel_reader(n_snps, voxel_list, log=None):
     """
     Doing voxel GWAS in batch, each block less than 3 GB
 
@@ -306,6 +306,8 @@ def voxel_reader(n_snps, voxel_list):
         batch_size = n_voxels
     else:
         batch_size = int(n_voxels / memory_use * 3)
+    if log is not None:
+        log.info(f'{batch_size} voxel(s) in a batch.')
 
     for i in range(0, n_voxels, batch_size):
         yield voxel_list[i : i + batch_size]
@@ -546,7 +548,7 @@ def run(args, log):
         vgwas = VGWAS(bases, ldr_cov, ldr_gwas, snp_idxs, ldr_n, args.threads)
 
         for voxel_idxs in tqdm(
-            voxel_reader(np.sum(snp_idxs), args.voxels),
+            voxel_reader(np.sum(snp_idxs), args.voxels, log),
             desc=f"Doing GWAS for {len(args.voxels)} voxel(s) in batch",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)

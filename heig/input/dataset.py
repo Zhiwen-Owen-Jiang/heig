@@ -759,6 +759,6 @@ def read_ld_annot(prefix_list, frqfile_prefix):
         overlap_matrix_chr = csc_matrix(overlap_matrix_chr)
         overlap_matrix_chr = overlap_matrix_chr.T @ overlap_matrix_chr
         overlap_matrix.append(overlap_matrix_chr.toarray())
-    overlap_matrix = np.sum(np.array(overlap_matrix), axis=0)
+    overlap_matrix = np.sum(np.array(overlap_matrix), axis=0).astype(np.float64)
     
     return overlap_matrix, M_tot

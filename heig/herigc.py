@@ -1022,6 +1022,7 @@ def run(args, log):
             )
             log.info(f"Saved the genetic correlation results to {args.out}_gc.txt")
     finally:
-        ldr_gwas.close()
-        if args.y2_sumstats:
+        if 'ldr_gwas' in locals(): 
+            ldr_gwas.close()
+        if args.y2_sumstats and 'y2_gwas' in locals():
             y2_gwas.close()

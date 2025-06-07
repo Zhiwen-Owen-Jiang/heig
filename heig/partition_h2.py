@@ -35,7 +35,7 @@ spec = [
     ("n_blocks", int64),
     ("n_annot", int64),
     ("n_coef", int64),
-    ("overlap_matrix", int64[:, :]),
+    ("overlap_matrix", float64[:, :]),
     ("M_annot", int64[:]),
     ("M_all_tot", int64),
     ("M_tot", int64),
@@ -433,7 +433,7 @@ def run(args, log):
 
         all_df = []
         for voxel_idxs in tqdm(
-            voxel_reader(np.sum(snp_idxs), args.voxels),
+            voxel_reader(np.sum(snp_idxs), args.voxels, log),
             desc=f"{len(args.voxels)} voxel(s)",
         ):
             voxel_beta = vgwas.recover_beta(voxel_idxs, args.threads)
