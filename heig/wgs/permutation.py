@@ -51,7 +51,8 @@ class Permutation:
         self.total_points = n_samples
         self.n_batch = self.total_points // self.n_masks[(2,2)]
         self.cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100)]
+                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
+                          (101, 200), (201, 300)]
         self.threads = threads
         self.n_subs = self.resid_voxels.shape[0]
         self.sig_thresh = chi2.ppf(1 - sig_thresh, 1)
@@ -159,7 +160,8 @@ class CreatingMask:
         self.bases = null_model.bases
         self.mac = mac
         self.cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100)]
+                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
+                          (101, 200), (201, 300)]
         
         if voxels is None:
             self.voxels = np.arange(self.bases.shape[0])
@@ -260,7 +262,8 @@ def merge_perm_files(perm_files, out, sig_thresh):
     
     """
     cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                 (10,11), (12,14), (15,20), (21,30), (31,60), (61,100)]
+                 (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
+                 (101, 200), (201, 300)]
     burden_sig_stats_dict = {bin: dict() for bin in cmac_bins}
     burden_count_dict = {bin: 0 for bin in cmac_bins}
     all_bins = None

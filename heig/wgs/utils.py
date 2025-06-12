@@ -295,6 +295,7 @@ class GProcessor:
             self.snps_mt = self.snps_mt.filter_rows(variant_idx)
 
         if mode == "wgs":
+            self._check_multi_allelic()
             self._impute_missing_snps()
             # self._flip_snps()
             # self._annotate_rare_variants()
@@ -501,6 +502,18 @@ class GProcessor:
                 self.snps_mt.GT.n_alt_alleles(),
             )
         )
+        
+    def _check_multi_allelic(self):
+        """
+        Checking if multi-allelic variants exist
+
+        """
+        n_multiallelic = self.snps_mt.aggregate_rows(
+            hl.agg.count_where(hl.len(self.snps_mt.alleles) > 2)
+        )
+        if n_multiallelic > 0:
+            raise ValueError(f"Found {n_multiallelic} unsplit multiallelic site(s). "
+                             "Please split and left normalize them using tools like bcftools.")
 
     def _impute_missing_snps(self):
         """
@@ -1055,7 +1068,8 @@ class IndexFile:
 class PermDistribution:
     def __init__(self, perm_file):
         self.bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                     (10,11), (12,14), (15,20), (21,30), (31,60), (61,100)]
+                     (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
+                     (101,200), (201,300)]
         self.sig_stats = {bin: dict() for bin in self.bins}
         self.count = {bin: 0 for bin in self.bins} 
         self.max_p = {bin: dict() for bin in self.bins}

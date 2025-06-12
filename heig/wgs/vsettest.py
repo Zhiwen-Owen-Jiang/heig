@@ -186,7 +186,7 @@ class VariantSetTest:
         burden_se = np.sqrt(self.var / w2cov_mat)
         burden_chisq = (burden_effect / burden_se) ** 2
 
-        if self.cmac > 100:
+        if self.cmac > 300:
             pvalues = chi2.sf(burden_chisq, 1)
         else:
             bin_idx = find_loc(self.perm.breaks, self.cmac)
@@ -383,19 +383,19 @@ class VariantSetTest:
         skat_1_25_pvalues = np.zeros((n_weights, self.N))
         # skat_1_1_pvalues = np.zeros((n_weights, self.N))
 
-        if "burden" in tests or "staar" in tests or self.cmac <= 500:
+        if "burden" in tests or "staar" in tests or self.cmac <= 1500:
             if compute_burden_effect:
                 burden_effect, burden_se, burden_pvalue = self._burden_test(self.weights["burden(1,1)"][0])
             for i in range(n_weights):
                 # _, _, burden_1_25_pvalues[i] = self._burden_test(self.weights["burden(1,25)"][i])
                 _, _, burden_1_1_pvalues[i] = self._burden_test(self.weights["burden(1,1)"][i])
 
-        if ("skat" in tests or "staar" in tests) and self.cmac > 500:
+        if ("skat" in tests or "staar" in tests) and self.cmac > 1500:
             for i in range(n_weights):
                 skat_1_25_pvalues[i] = self._skat_test(self.weights["skat(1,25)"][i])
                 # skat_1_1_pvalues[i] = self._skat_test(self.weights["skat(1,1)"][i])
         
-        if "staar" in tests and self.cmac > 500:
+        if "staar" in tests and self.cmac > 1500:
             all_pvalues = np.vstack(
                 [
                     skat_1_25_pvalues,
