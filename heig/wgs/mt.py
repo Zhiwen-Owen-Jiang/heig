@@ -113,6 +113,8 @@ class SparseGenotype:
     1. keep(), update maf
     2. extract_exclude_locus() and extract_chr_interval()
     3. extract_maf()
+    
+    TODO: combine all filters in one step.
 
     """
 
@@ -139,6 +141,24 @@ class SparseGenotype:
         self.maf_idx = np.full(self.vset.shape[0], True)
         self.mac_idx = np.full(self.vset.shape[0], True)
         self.maf, self.mac = self._update_maf()
+        
+    def extract_variant_type(self, variant_type):
+        """
+        Extracting variants by type
+
+        Parameters:
+        ------------
+        variant_type: snv, indel, or variant
+
+        """
+        if variant_type is not None and variant_type != "variant":
+            if variant_type == "snv":
+                func = hl.is_snp  # the same as isSNV()
+            elif variant_type == "indel":
+                func = hl.is_indel
+            else:
+                raise ValueError("variant_type must be snv, indel or variant")
+            self.locus = self.locus.filter(func(self.locus.alleles[0], self.locus.alleles[1]))
 
     def extract_exclude_locus(self, extract_locus, exclude_locus, extract_chrs):
         """
