@@ -1,11 +1,11 @@
 import shutil
-import time
-from functools import wraps
 import numpy as np
 import pandas as pd
 import hail as hl
+# from memory_profiler import profile
 from hail.linalg import BlockMatrix
 from scipy.sparse import csr_matrix, save_npz, load_npz
+from heig.utils import log_execution_time
 from heig.wgs.utils import *
 
 """
@@ -13,17 +13,6 @@ TODO:
 1. Merge multiple sparse genotype datasets
 
 """
-
-def log_execution_time(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        elapsed_time = time.perf_counter() - start_time
-        print(f"{func.__name__} executed in {elapsed_time:.4f}s")
-        return result
-    return wrapper
-
 
 def check_input(args, log):
     if args.bfile is None and args.vcf is None and args.geno_mt is None:
@@ -67,7 +56,7 @@ def check_input(args, log):
             raise TypeError("Cannot lift over from GRCh38 to GRCh38")
 
 
-def prepare_vset(snps_mt, variant_type):
+def prepare_vset(snps_mt, variant_type, tmp_dir):
     """
     Extracting data from MatrixTable
 
@@ -95,20 +84,9 @@ def prepare_vset(snps_mt, variant_type):
 
     entries = bm.entries()
     non_zero_entries = entries.filter(entries.entry > 0)
-    # non_zero_entries = non_zero_entries.collect()
-    # rows, cols, values = zip(*map(lambda e: (e["i"], e["j"], e["entry"]), non_zero_entries))
-    
-    non_zero_entries = non_zero_entries.annotate(
-        i32 = hl.int32(non_zero_entries.i),
-        j32 = hl.int32(non_zero_entries.j),
-        e32 = hl.int32(non_zero_entries.entry)
-    )
-
-    # df = non_zero_entries.select("i32","j32","e32").to_pandas()
-    df = get_entries(non_zero_entries)
-    values = df["e32"].values.astype(np.int8)
-    rows = df["i32"].values 
-    cols = df["j32"].values
+    # rows, cols, values = get_entries_by_collect(non_zero_entries)
+    rows, cols, values = get_entries_by_pandas(non_zero_entries)
+    # rows, cols, values = get_entries_by_parquet(non_zero_entries, tmp_dir)
 
     vset = csr_matrix((values, (rows, cols)), shape=bm.shape, dtype=np.int8)
     remove_variants_inplace(vset)
@@ -122,13 +100,48 @@ def prepare_vset(snps_mt, variant_type):
 
 
 @log_execution_time
+# @profile
 def get_blockmatrix(snps_mt):
     return BlockMatrix.from_entry_expr(snps_mt.imputed_n_alt_alleles)
     
 
 @log_execution_time
-def get_entries(entries):
-    return entries.select("i32","j32","e32").to_pandas()
+# @profile
+def get_entries_by_pandas(non_zero_entries):
+    non_zero_entries = non_zero_entries.annotate(
+        i32 = hl.int32(non_zero_entries.i),
+        j32 = hl.int32(non_zero_entries.j),
+        e32 = hl.int32(non_zero_entries.entry)
+    )
+    df = non_zero_entries.select("i32","j32","e32").to_pandas()
+    values = df["e32"].values.astype(np.int8)
+    rows = df["i32"].values 
+    cols = df["j32"].values
+    return rows, cols, values
+
+
+@log_execution_time
+# @profile
+def get_entries_by_collect(non_zero_entries):
+    non_zero_entries = non_zero_entries.collect()
+    rows, cols, values = zip(*map(lambda e: (e["i"], e["j"], e["entry"]), non_zero_entries))
+    rows = np.array(rows, dtype=np.int32)
+    cols = np.array(cols, dtype=np.int32)
+    values = np.array(values, dtype=np.int8)
+    return rows, cols, values
+
+
+@log_execution_time
+# @profile
+def get_entries_by_parquet(non_zero_entries, tmp_dir):
+    non_zero_entries = non_zero_entries.to_spark()
+    non_zero_entries.write.mode("overwrite").parquet(f"{tmp_dir}.parquet")
+    non_zero_entries = pd.read_parquet(f"{tmp_dir}.parquet")
+    values = non_zero_entries['entry'].values.astype(np.int8)
+    rows = non_zero_entries['i'].values.astype(np.int32)
+    cols = non_zero_entries['j'].values.astype(np.int32)
+
+    return values, rows, cols
 
 
 # @log_execution_time
@@ -163,6 +176,7 @@ def flip_variants_inplace(csr):
     csr.data[flip_mask] = 2 - csr.data[flip_mask]
 
 
+@log_execution_time
 def remove_variants_inplace(csr):
     """
     Mutate the input CSR matrix so that any row whose mean/2 > 0.5
@@ -404,7 +418,7 @@ def run(args, log):
         # save
         if args.save_sparse_genotype:
             log.info("Constructing sparse genotype ...")
-            vset, locus = prepare_vset(gprocessor.snps_mt, args.variant_type)
+            vset, locus = prepare_vset(gprocessor.snps_mt, args.variant_type, args.out + '_nz')
             log.info(
                 f"{vset.shape[1]} subjects and {vset.shape[0]} variants in the sparse genotype"
             )

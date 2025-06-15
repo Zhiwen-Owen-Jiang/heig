@@ -160,6 +160,7 @@ class GProcessor:
                 "_extract_mac",
                 "_extract_call_rate",
                 "_filter_hwe",
+                "_filter_multi_allelic",
                 # "_annotate_rare_variants",
                 "_filter_missing_alt",
                 # "_impute_missing_snps",
@@ -295,7 +296,7 @@ class GProcessor:
             self.snps_mt = self.snps_mt.filter_rows(variant_idx)
 
         if mode == "wgs":
-            self._check_multi_allelic()
+            # self._check_multi_allelic()
             self._impute_missing_snps()
             # self._flip_snps()
             # self._annotate_rare_variants()
@@ -503,17 +504,17 @@ class GProcessor:
             )
         )
         
-    def _check_multi_allelic(self):
+    def _filter_multi_allelic(self):
         """
-        Checking if multi-allelic variants exist
+        Filtering multi-allelic variants
 
         """
         n_multiallelic = self.snps_mt.aggregate_rows(
             hl.agg.count_where(hl.len(self.snps_mt.alleles) > 2)
         )
         if n_multiallelic > 0:
-            raise ValueError(f"Found {n_multiallelic} unsplit multiallelic site(s). "
-                             "Please split and left normalize them using tools like bcftools.")
+            self.logger.info(f"WARNING: Found {n_multiallelic} unsplit multiallelic site(s).")
+        return hl.len(self.snps_mt.alleles) <= 2
 
     def _impute_missing_snps(self):
         """
