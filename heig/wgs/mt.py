@@ -1,17 +1,28 @@
 import shutil
+import time
+from functools import wraps
 import numpy as np
 import pandas as pd
 import hail as hl
 from hail.linalg import BlockMatrix
-from scipy.sparse import lil_matrix, save_npz, load_npz
+from scipy.sparse import csr_matrix, save_npz, load_npz
 from heig.wgs.utils import *
 
 """
 TODO:
 1. Merge multiple sparse genotype datasets
-2. Add an option of MAC filtering
 
 """
+
+def log_execution_time(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed_time = time.perf_counter() - start_time
+        print(f"{func.__name__} executed in {elapsed_time:.4f}s")
+        return result
+    return wrapper
 
 
 def check_input(args, log):
@@ -76,34 +87,101 @@ def prepare_vset(snps_mt, variant_type):
         reference_genome=locus.locus.dtype.reference_genome.name
     )
     locus = locus.annotate_globals(variant_type=variant_type)
-    # bm = BlockMatrix.from_entry_expr(snps_mt.GT.n_alt_alleles(), mean_impute=True)
-    bm = BlockMatrix.from_entry_expr(snps_mt.imputed_n_alt_alleles)
+    locus = locus.add_index("idx")
+    # bm = BlockMatrix.from_entry_expr(snps_mt.imputed_n_alt_alleles)
+    bm = get_blockmatrix(snps_mt)
     if bm.shape[0] == 0 or bm.shape[1] == 0:
         raise ValueError("no variant in the genotype data")
 
     entries = bm.entries()
     non_zero_entries = entries.filter(entries.entry > 0)
-    non_zero_entries = non_zero_entries.collect()
-    rows, cols, values = zip(*map(lambda e: (e["i"], e["j"], e["entry"]), non_zero_entries))
-    values = np.array(values, dtype=np.int8)
+    # non_zero_entries = non_zero_entries.collect()
+    # rows, cols, values = zip(*map(lambda e: (e["i"], e["j"], e["entry"]), non_zero_entries))
+    
+    non_zero_entries = non_zero_entries.annotate(
+        i32 = hl.int32(non_zero_entries.i),
+        j32 = hl.int32(non_zero_entries.j),
+        e32 = hl.int32(non_zero_entries.entry)
+    )
 
-    vset = lil_matrix(bm.shape, dtype=np.int8)
-    vset[rows, cols] = values
-    vset = flip_variants(vset)
-    vset = vset.tocsr()
+    # df = non_zero_entries.select("i32","j32","e32").to_pandas()
+    df = get_entries(non_zero_entries)
+    values = df["e32"].values.astype(np.int8)
+    rows = df["i32"].values 
+    cols = df["j32"].values
+
+    vset = csr_matrix((values, (rows, cols)), shape=bm.shape, dtype=np.int8)
+    remove_variants_inplace(vset)
+    variant_mask = np.where(vset.sum(axis=1).A1 > 0)[0]
+    locus = locus.filter(hl.literal(set(list(variant_mask))).contains(locus.idx))
+    vset = vset[variant_mask]
+    locus = locus.drop("idx")
+    # flip_variants_inplace(vset)
 
     return vset, locus
 
 
-def flip_variants(vset):
-    """
-    vset: a lil_matrix of sparse genotype
+@log_execution_time
+def get_blockmatrix(snps_mt):
+    return BlockMatrix.from_entry_expr(snps_mt.imputed_n_alt_alleles)
     
-    """
-    to_flip = np.squeeze(np.array(vset.mean(axis=1) / 2 > 0.5))
-    vset[to_flip] = 2 - vset[to_flip].toarray().astype(np.int8)
 
-    return vset
+@log_execution_time
+def get_entries(entries):
+    return entries.select("i32","j32","e32").to_pandas()
+
+
+# @log_execution_time
+# def flip_variants(vset):
+#     """
+#     vset: a lil_matrix of sparse genotype
+    
+#     """
+#     to_flip = np.squeeze(np.array(vset.mean(axis=1) / 2 > 0.5))
+#     vset[to_flip] = 2 - vset[to_flip].toarray().astype(np.int8)
+
+#     return vset
+
+
+def flip_variants_inplace(csr):
+    """
+    Mutate the input CSR matrix so that any row whose mean/2 > 0.5
+    has its non-zero entries flipped (2 - value).
+
+    """
+    maf = csr.mean(axis=1).A1 / 2 
+    to_flip = maf > 0.5
+
+    if not to_flip.any():
+        return
+
+    indptr = csr.indptr
+    counts = np.diff(indptr)
+    row_idx = np.repeat(np.arange(csr.shape[0]), counts)
+
+    flip_mask = to_flip[row_idx]
+    csr.data[flip_mask] = 2 - csr.data[flip_mask]
+
+
+def remove_variants_inplace(csr):
+    """
+    Mutate the input CSR matrix so that any row whose mean/2 > 0.5
+    is removed
+
+    """
+    maf = csr.mean(axis=1).A1 / 2 
+    to_flip = maf > 0.5
+
+    if not to_flip.any():
+        return
+
+    indptr = csr.indptr
+    counts = np.diff(indptr)
+    row_idx = np.repeat(np.arange(csr.shape[0]), counts)
+
+    flip_mask = to_flip[row_idx]
+    csr.data[flip_mask] = 0
+    csr.eliminate_zeros()
 
 
 class SparseGenotype:

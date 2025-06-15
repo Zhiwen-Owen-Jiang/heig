@@ -2,16 +2,13 @@ import os
 import time
 import argparse
 import traceback
-import numexpr
 import numpy as np
 import heig.input.dataset as ds
 from heig.utils import GetLogger, sec_to_str
 
 
-# os.environ['NUMEXPR_MAX_THREADS'] = '8'
-# numexpr.set_num_threads(int(os.environ['NUMEXPR_MAX_THREADS']))
 
-VERSION = "1.5.1-alpha"
+VERSION = "1.6.0-alpha"
 MASTHEAD = (
     "******************************************************************************\n"
 )
@@ -198,7 +195,7 @@ common_parser.add_argument("--out", help="Prefix of output.")
 common_parser.add_argument(
     "--image", "--images",
     help=(
-        "Directory to processed raw images in HDF5 format. "
+        "Directory to images in HDF5 format. "
         "Supported modules: --read-image, --fpca, --make-ldr."
     ),
 )
@@ -952,7 +949,7 @@ tfce_parser.add_argument(
     type=float,
     help=(
         "TFCE quantile level to exclude associations, "
-        "e.g., 0.95 means the 95% quantile. Default: 0."
+        "e.g., 0.95 means the 95 percent quantile. Default: 0."
     )
 )
 tfce_parser.add_argument(
