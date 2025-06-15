@@ -1,7 +1,8 @@
 import gzip
 import bz2
 import logging
-from functools import reduce
+import time
+from functools import reduce, wraps
 import numpy as np
 from scipy.linalg import cho_solve, cho_factor
 
@@ -109,3 +110,14 @@ def inv(A):
     A_inv = cho_solve(cho_factors, np.eye(A.shape[0]))
 
     return A_inv.astype(dtype)
+
+
+def log_execution_time(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed_time = time.perf_counter() - start_time
+        print(f"{func.__name__} executed in {elapsed_time:.4f}s")
+        return result
+    return wrapper
