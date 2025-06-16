@@ -418,6 +418,7 @@ def run(args, log):
         # save
         if args.save_sparse_genotype:
             log.info("Constructing sparse genotype ...")
+            gprocessor.repartition()
             vset, locus = prepare_vset(gprocessor.snps_mt, args.variant_type, args.out + '_nz')
             log.info(
                 f"{vset.shape[1]} subjects and {vset.shape[0]} variants in the sparse genotype"

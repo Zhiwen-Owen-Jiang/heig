@@ -625,19 +625,30 @@ class GProcessor:
         remove_idvs: a pd.MultiIndex/list/tuple/set of subject ids
 
         """
+        filtering = None
         if keep_idvs is not None:
             if isinstance(keep_idvs, pd.MultiIndex):
                 keep_idvs = keep_idvs.get_level_values("IID").tolist()
             keep_idvs = hl.literal(set(keep_idvs))
-            self.snps_mt = self.snps_mt.filter_cols(keep_idvs.contains(self.snps_mt.s))
+            filtering = keep_idvs.contains(self.snps_mt.s)
+            # self.snps_mt = self.snps_mt.filter_cols(keep_idvs.contains(self.snps_mt.s))
 
         if remove_idvs is not None:
             if isinstance(remove_idvs, pd.MultiIndex):
                 remove_idvs = remove_idvs.get_level_values("IID").tolist()
             remove_idvs = hl.literal(set(remove_idvs))
-            self.snps_mt = self.snps_mt.filter_cols(
-                ~remove_idvs.contains(self.snps_mt.s)
-            )
+            if filtering is None:
+                filtering =  ~remove_idvs.contains(self.snps_mt.s)
+            else:
+                filtering = filtering & (~remove_idvs.contains(self.snps_mt.s))
+            # self.snps_mt = self.snps_mt.filter_cols(
+            #     ~remove_idvs.contains(self.snps_mt.s)
+            # )
+            
+        if filtering is not None:
+            self.snps_mt = self.snps_mt.filter_cols(filtering)
+            self.snps_mt = self.snps_mt.filter_rows(hl.agg.any(self.snps_mt.GT.n_alt_alleles() > 0))
+        
 
     def extract_range(self):
         """
@@ -715,6 +726,15 @@ class GProcessor:
         self.snps_mt = self.snps_mt.filter_rows(hl.is_defined(self.snps_mt.new_locus))
         self.snps_mt = self.snps_mt.key_rows_by(locus=self.snps_mt.new_locus, alleles=self.snps_mt.alleles)
         self.geno_ref = to
+
+    def repartition(self):
+        n_sub = self.snps_mt.count_cols()
+        n_variants = self.snps_mt.count_rows()
+        total_bytes = n_sub * n_variants * 8
+        target_bytes = 150 * 1024**2
+        n_parts = int(total_bytes / target_bytes)
+        self.snps_mt = self.snps_mt.repartition(n_parts)
+        self.logger.info(f'Repartitioned into {n_parts} parts.')
 
 
 def read_genotype_data(args, log):
