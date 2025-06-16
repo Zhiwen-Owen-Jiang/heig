@@ -19,7 +19,7 @@ OFFICIAL_NAME = {
 
 
 class Coding:
-    def __init__(self, annot, variant_type):
+    def __init__(self, annot, variant_type, gene_name):
         """
         Extracting coding variants, generate annotation, and get index for each category
 
@@ -27,6 +27,7 @@ class Coding:
         ------------
         annot: a hail.Table of annotations with key ('locus', 'alleles') and hail.struct of annotations
         variant_type: one of ('variant', 'snv', 'indel')
+        gene_name: name of the gene
 
         """
         self.annot = annot
@@ -44,7 +45,12 @@ class Coding:
         lof_in_coding_annot = valid_exonic_categories.contains(
             gencode_exonic_category
         ) | valid_categories.contains(gencode_category)
-        self.annot = self.annot.filter(lof_in_coding_annot)
+
+        genecode_info = self.annot.annot[
+            Annotation_name_catalog["GENCODE.Info"]
+        ]
+        gene_variants = genecode_info.contains(gene_name)
+        self.annot = self.annot.filter(lof_in_coding_annot & gene_variants)
 
         self.gencode_exonic_category = self.annot.annot[
             Annotation_name_catalog["GENCODE.EXONIC.Category"]
@@ -55,7 +61,7 @@ class Coding:
         self.metasvm_pred = self.annot.annot[Annotation_name_catalog["MetaSVM"]]
         self.category_dict = self.get_category(variant_type)
 
-        if variant_type == "snv":
+        if variant_type != "indel":
             self.annot_cols = [
                 Annotation_name_catalog[annot_name] for annot_name in Annotation_name
             ]
@@ -191,7 +197,7 @@ def coding_vset_analysis(
         )
         if variant_set_locus is None:
             continue
-        coding = Coding(variant_set_locus, variant_type)
+        coding = Coding(variant_set_locus, variant_type, gene[0])
         chr, start, end = get_interval(variant_set_locus)
 
         # individual analysis
@@ -204,6 +210,9 @@ def coding_vset_analysis(
                 numeric_idx, phred_cate = coding.parse_annot(idx, use_annot_weights)
                 if len(numeric_idx) <= 1:
                     log.info(f"Skipping {OFFICIAL_NAME[cate]} (< 2 variants).")
+                    continue
+                if phred_cate is not None and np.isnan(phred_cate).any():
+                    log.info(f"Skipping {OFFICIAL_NAME[cate]} (NAs in annotation weights).")
                     continue
                 half_ldr_score, cov_mat, maf, mac = rv_sumstats.parse_data(
                     numeric_idx
@@ -331,13 +340,13 @@ def check_input(args, log):
     if args.cmac_max is None:
         args.cmac_max = np.inf
     
-    if args.cmac_min <= 500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
+    if args.cmac_min <= 1500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
         log.info(
-            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 500. "
+            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 1500. "
              "Only burden test will be used.")
         )
-    if args.cmac_min <= 1000 and args.use_annot_weights:
-        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1000.")
+    if args.cmac_min <= 1500 and args.use_annot_weights:
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1500.")
 
     if args.variant_category is None:
         variant_category = ["all"]
