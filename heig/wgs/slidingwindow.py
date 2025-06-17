@@ -50,15 +50,15 @@ class GeneralAnnotation:
             )
             if annot.dtype == object:
                 raise TypeError("annotations must be numerical data")
-            if np.isnan(annot).any():
-                raise ValueError("missing values are not allowed in annotations")
+            # if np.isnan(annot).any():
+            #     raise ValueError("missing values are not allowed in annotations")
         else:
             annot = None
 
         return numeric_idx, annot
 
 
-class SlidingWindow(GeneralAnnotation):
+class SlidingWindow:
     """
     Rare variant analysis using fixed-length sliding window
 
@@ -71,6 +71,7 @@ class SlidingWindow(GeneralAnnotation):
         geno_ref,
         sliding_length=None,
         annot_cols=None,
+        use_annot_weights=False
     ):
         """
         Parameters:
@@ -79,14 +80,17 @@ class SlidingWindow(GeneralAnnotation):
         sliding_length: step size of moving forward (bp)
 
         """
-        super().__init__(annot, annot_cols)
+        self.annot = annot
+        self.annot_cols = annot_cols
         self.geno_ref = geno_ref
         self.chr, self.start, self.end = get_interval(self.annot)
         self.window_length = window_length
         self.sliding_length = sliding_length
 
-        # self.chr_intervals, self.windows = self._partition_windows()
-        self.chr_intervals, self.windows = self._partition_windows_fast()
+        if use_annot_weights: 
+            self.chr_intervals, self.windows = self._partition_windows()
+        else:
+            self.chr_intervals, self.windows = self._partition_windows_fast()
 
     def _partition_windows(self):
         """
@@ -94,20 +98,24 @@ class SlidingWindow(GeneralAnnotation):
         sliding length is half of window length
 
         """
+        positions = np.array(self.annot.locus.position.collect())
         windows = list()
         chr_intervals = list()
-        cur_left = self.start
-        cur_right = self.start + self.window_length
 
-        while cur_right <= self.end:
-            interval = hl.locus_interval(
-                self.chr, cur_left, cur_right, reference_genome=self.geno_ref, includes_end=True
-            )
-            window = interval.contains(self.annot.locus)
-            windows.append(window)
-            chr_intervals.append([cur_left, cur_right])
-            cur_left += self.sliding_length
-            cur_right += self.sliding_length
+        for start in range(self.start, self.end, self.sliding_length):
+            end = start + self.window_length
+            start_idx = find_loc(positions, start)
+            end_idx = find_loc(positions, end-1)
+            if positions[start_idx] < start:
+                start_idx += 1
+            if end_idx > start_idx + 1:
+                interval = hl.locus_interval(
+                    self.chr, start, end, reference_genome=self.geno_ref, includes_end=False
+                )
+                # window = interval.contains(self.annot.locus)
+                window = self.annot.filter(interval.contains(self.annot.locus))
+                windows.append(window)
+                chr_intervals.append([start, end-1])
 
         return chr_intervals, windows
     
@@ -188,17 +196,25 @@ def vset_analysis(
 
             # individual analysis
             numeric_idx, phred_cate = general_annot.parse_annot(use_annot_weights)
+            if len(numeric_idx) <= 1: 
+                log.info(f"Skipping {gene[0]} (< 2 variants).")
+                continue
+            
+            if phred_cate is not None and np.isnan(phred_cate).any():
+                log.info(f"Skipping {gene[0]} (NAs in annotation weights).")
+                continue
+
             half_ldr_score, cov_mat, maf, mac = rv_sumstats.parse_data(
                 numeric_idx
             )
             if half_ldr_score is None:
                 continue
+
             cmac = int(np.sum(mac))
             if cmac < cmac_min or cmac > cmac_max:
-                log.info(
-                    f"Skipping {gene[0]} (cMAC ({cmac}) out of range)."
-                )
+                log.info(f"Skipping {gene[0]} (cMAC ({cmac}) out of range).")
                 continue
+
             is_rare = mac < mac_thresh
             vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, phred_cate)
             log.info(
@@ -207,6 +223,7 @@ def vset_analysis(
                     f"({vset_test.n_variants} variants, {cmac} alleles) ..."
                 )
             )
+
             pvalues, burden_test = vset_test.do_inference_tests(
                 tests, general_annot.annot_cols
             )
@@ -221,7 +238,7 @@ def vset_analysis(
 
     else:
         sliding_window = SlidingWindow(
-            annot_locus, window_length, rv_sumstats.geno_ref, sliding_length, annot_cols
+            annot_locus, window_length, rv_sumstats.geno_ref, sliding_length, annot_cols, use_annot_weights
         )
         n_windows = len(sliding_window.windows)
         log.info(f"Partitioned the genotype data into {n_windows} windows.")
@@ -229,17 +246,29 @@ def vset_analysis(
         window_i = 0
         for chr_interval, window in zip(sliding_window.chr_intervals, sliding_window.windows):
             all_pvalues = dict()
-            # numeric_idx, phred_cate = sliding_window.parse_annot(window, use_annot_weights)
-            numeric_idx, phred_cate = window, None
+            if use_annot_weights:
+                annot_window = GeneralAnnotation(window, annot_cols)
+                numeric_idx, phred_cate = annot_window.parse_annot(use_annot_weights)
+                if phred_cate is None or np.isnan(phred_cate).any():
+                    log.info(f"Skipping window (NAs in annotation weights).")
+                    continue
+            else:
+                numeric_idx, phred_cate = window, None
+            if len(numeric_idx) <= 1: 
+                log.info(f"Skipping window (< 2 variants).")
+                continue
+            
             half_ldr_score, cov_mat, maf, mac = rv_sumstats.parse_data(
                 numeric_idx
             )
             if half_ldr_score is None:
                 continue
+
             cmac = int(np.sum(mac))
             if cmac < cmac_min or cmac > cmac_max:
                 log.info(f"Skipping window (cMAC ({cmac}) out of range).")
                 continue
+
             window_i += 1
             is_rare = mac < mac_thresh
             vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, phred_cate)
@@ -249,6 +278,7 @@ def vset_analysis(
                     f"({vset_test.n_variants} variants, {cmac} alleles) ..."
                 )
             )
+
             pvalues, burden_test = vset_test.do_inference_tests(
                 tests, sliding_window.annot_cols
             )
@@ -276,6 +306,8 @@ def check_input(args, log):
     if args.window_length is None and args.variant_sets is None:
         raise ValueError(("either --variant-sets (general annotation) " 
                           "or --window-length is required"))
+    if args.use_annot_weights and args.annot_cols is None:
+        raise ValueError("no annotation columns are provided.")
     if args.annot_cols is not None:
         args.annot_cols = args.annot_cols.split(",")
     if args.window_length is not None and args.window_length < 2:
@@ -302,13 +334,13 @@ def check_input(args, log):
     if args.cmac_max is None:
         args.cmac_max = np.inf
 
-    if args.cmac_min <= 500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
+    if args.cmac_min <= 1500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
         log.info(
-            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 500. "
+            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 1500. "
              "Only burden test will be used.")
         )
-    if args.cmac_min <= 1000 and args.use_annot_weights:
-        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1000.")
+    if args.cmac_min <= 1500 and args.use_annot_weights:
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1500.")
 
 
 def run(args, log):
