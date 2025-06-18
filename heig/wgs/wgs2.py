@@ -8,6 +8,7 @@ from heig.wgs.relatedness import LOCOpreds
 from heig.wgs.null import NullModel
 from heig.wgs.utils import *
 from heig.wgs.mt import SparseGenotype
+from heig.utils import log_execution_time
 from scipy.sparse import csr_matrix
 
 
@@ -225,6 +226,7 @@ class SparseBandedLD:
 
         return diagonal_data, banded_data, banded_row, banded_col, shape
     
+    @log_execution_time
     def _process_block(self, block):
         start = block[0]
         end1 = start + block[1]
@@ -512,8 +514,8 @@ def check_input(args, log):
         raise ValueError("--null-model is required")
 
     if args.variant_type is None:
-        args.variant_type = "snv"
-        log.info(f"Set --variant-type as default 'snv'.")
+        args.variant_type = "variant"
+        log.info(f"Set --variant-type as default 'variant'.")
 
     if args.maf_max is None:
         if args.maf_min is not None and args.maf_min < 0.01 or args.maf_min is None:
@@ -577,6 +579,7 @@ def run(args, log):
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
         sparse_genotype.keep(common_ids)
+        sparse_genotype.extract_variant_type(args.variant_type)
         sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         sparse_genotype.extract_chr_interval(args.chr_interval)
         sparse_genotype.extract_maf(args.maf_min, args.maf_max)

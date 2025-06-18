@@ -25,8 +25,8 @@ def check_input(args, log):
     if args.bfile is not None:
         args.vcf = None
     if args.variant_type is None:
-        args.variant_type = "snv"
-        log.info(f"Set --variant-type as default 'snv'.")
+        args.variant_type = "variant"
+        log.info(f"Set --variant-type as default 'variant'.")
 
     if args.qc_mode is None:
         args.qc_mode = "gwas"
@@ -421,7 +421,7 @@ def run(args, log):
             gprocessor.repartition()
             vset, locus = prepare_vset(gprocessor.snps_mt, args.variant_type, args.out + '_nz')
             log.info(
-                f"{vset.shape[1]} subjects and {vset.shape[0]} variants in the sparse genotype"
+                f"{vset.shape[1]} subjects and {vset.shape[0]} variants in the sparse genotype."
             )
             snps_mt_ids = gprocessor.subject_id()
             save_npz(f"{args.out}_genotype.npz", vset)
