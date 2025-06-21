@@ -260,7 +260,7 @@ def summarize_results(
             mask = results_mask['MASK'].to_list()[0]
             cmac = results_mask['CMAC'].to_list()[0]
             n_variants = results_mask['N_VARIANTS'].to_list()[0]
-            test = results_mask.columns[4] if cmac > 100 else "Burden(1,1)"
+            test = results_mask.columns[4] if cmac > 300 else "Burden(1,1)"
             results_mask = results_mask[(results_mask[test] < sig_thresh)].copy()
 
             if len(results_mask) == 0:
@@ -432,9 +432,10 @@ def run(args, log):
     else:
         log.info(f"Read null associations from {args.null_assoc}")
         null_assoc = pd.read_csv(args.null_assoc, sep="\t")
-        cmac_breaks = [0, 2, 3, 4, 5, 7, 9, 11, 14, 20, 30, 60, 100, 500, 10000000]
+        cmac_breaks = [0, 2, 3, 4, 5, 7, 9, 11, 14, 20, 30, 60, 100, 200, 300, 500, 10000000]
         cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9), (10,11), 
-                     (12,14), (15,20), (21,30), (31,60), (61,100), (101,500), (501,)]
+                     (12,14), (15,20), (21,30), (31,60), (61,100), (101,200), 
+                     (201,300), (301,500), (501,)]
         null_assoc["cmac_bin"] = pd.cut(null_assoc["CMAC"], bins = cmac_breaks, labels=cmac_bins)
         null_assoc_by_cmac_bin = null_assoc.groupby("cmac_bin", observed=True)
 

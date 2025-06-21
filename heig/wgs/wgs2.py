@@ -226,7 +226,6 @@ class SparseBandedLD:
 
         return diagonal_data, banded_data, banded_row, banded_col, shape
     
-    @log_execution_time
     def _process_block(self, block):
         start = block[0]
         end1 = start + block[1]

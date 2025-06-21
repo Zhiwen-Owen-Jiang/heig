@@ -105,7 +105,7 @@ def parse_gene(
         "ptv",
         "ptv_ds",
     }:
-        coding = Coding(variant_set_locus, variant_type)
+        coding = Coding(variant_set_locus, variant_type, gene[0])
         mask_idx = coding.category_dict[variant_category]
         numeric_idx, phred_cate = coding.parse_annot(mask_idx, use_annot_weights)
         annot_name = coding.annot_name
