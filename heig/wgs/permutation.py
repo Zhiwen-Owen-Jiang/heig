@@ -15,9 +15,14 @@ from heig.wgs.utils import list_datasets
 
 
 """
-Using permutation to test variant sets with a cMAC < 100
+Using permutation to test variant sets with a cMAC < 300
 
 """
+
+CMAC_BINS = {(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
+            (10,11), (12,14), (15,20), (21,30), (31,60), 
+            (61,100), (101,200), (201,300)}
+
 
 class Permutation:
     """
@@ -29,6 +34,7 @@ class Permutation:
     def __init__(
             self, 
             mask,
+            cmac_bins,
             n_samples=5*10**8,
             sig_thresh=2.5e-6,
             threads=1,
@@ -37,6 +43,7 @@ class Permutation:
         Parameters:
         ------------
         mask: an instance of CreatingMask
+        cmac_bins: CMAC bins to permute
         n_samples: total number of permutation points
         sig_thresh: significant threshold
         threads: number of threads
@@ -49,10 +56,8 @@ class Permutation:
         self.n_masks = mask.n_masks
         self.voxels = mask.voxels
         self.total_points = n_samples
-        self.n_batch = self.total_points // self.n_masks[(2,2)]
-        self.cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
-                          (101, 200), (201, 300)]
+        self.n_batch = self.total_points // self.n_masks[list(self.n_masks.keys())[0]]
+        self.cmac_bins = cmac_bins 
         self.threads = threads
         self.n_subs = self.resid_voxels.shape[0]
         self.sig_thresh = chi2.ppf(1 - sig_thresh, 1)
@@ -150,6 +155,7 @@ class CreatingMask:
             locus, 
             vset,
             mac, 
+            cmac_bins,
             loco_preds,
     ):
         self.locus = locus
@@ -159,9 +165,7 @@ class CreatingMask:
         self.n_subs, self.n_covars = self.covar.shape
         self.bases = null_model.bases
         self.mac = mac
-        self.cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                          (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
-                          (101, 200), (201, 300)]
+        self.cmac_bins = cmac_bins
         
         if voxels is None:
             self.voxels = np.arange(self.bases.shape[0])
@@ -213,6 +217,7 @@ class CreatingMask:
         Get independent genes for each cMAC bin
         
         """
+        n_replicates = 100000
         gene_numeric_idxs = dict()
         variant_idxs = np.arange(self.n_variants)
         for bin in self.cmac_bins:
@@ -228,10 +233,10 @@ class CreatingMask:
                     selected_variants = permuted_variant_idxs[start: end]
                     if bin[0] <= np.sum(self.mac[selected_variants]) <= bin[1]:
                         output.append(selected_variants.tolist())
-                        if len(output) >= 10000:
+                        if len(output) >= n_replicates:
                             break
                     start += skip_size
-                if len(output) >= 10000:
+                if len(output) >= n_replicates:
                     break
             gene_numeric_idxs[bin] = output
 
@@ -256,14 +261,11 @@ class CreatingMask:
         return cov_mat_dict
             
 
-def merge_perm_files(perm_files, out, sig_thresh):
+def merge_perm_files(perm_files, out, sig_thresh, cmac_bins):
     """
-    Merge a list of permutation files
+    Merge a list of permutation files for selected CMAC bins
     
     """
-    cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9),
-                 (10,11), (12,14), (15,20), (21,30), (31,60), (61,100), 
-                 (101, 200), (201, 300)]
     burden_sig_stats_dict = {bin: dict() for bin in cmac_bins}
     burden_count_dict = {bin: 0 for bin in cmac_bins}
     all_bins = None
@@ -275,6 +277,8 @@ def merge_perm_files(perm_files, out, sig_thresh):
         for bin_str in all_bins:
             bin1, bin2, voxel = tuple([int(x) for x in bin_str.split("_")])
             bin = tuple([bin1, bin2])
+            if bin not in burden_sig_stats_dict:
+                continue
             data = h5file[bin_str]
             count = data.attrs["count"]
             if voxel in burden_sig_stats_dict[bin]:
@@ -317,10 +321,23 @@ def check_input(args, log):
         if args.n_bootstrap is None:
             args.n_bootstrap = 5e7
             log.info("Set total number of permutation as 5e7")
+        if args.variant_type is None:
+            args.variant_type = "variant"
+            log.info(f"Set --variant-type as default 'variant'.")
     else:
         args.perm_list = ds.parse_input(args.perm_list)
         for x in args.perm_list:
             ds.check_existence(x)
+    if args.cmac_bins is None:
+            args.cmac_bins = CMAC_BINS
+    else:
+        cmac_bins = args.cmac_bins.split(',')
+        args.cmac_bins = set()
+        for x in cmac_bins:
+            cmac_bin = (int(x.split('_')[0]), int(x.split('_')[1]))
+            if cmac_bin not in CMAC_BINS:
+                raise ValueError(f"invalid CMAC bin {x}")
+            args.cmac_bins.add(cmac_bin)
     if args.sig_thresh is None:
         args.sig_thresh = 2.5e-6
         log.info("Set significance threshold as 2.5e-6")
@@ -332,7 +349,7 @@ def run(args, log):
 
     if args.perm_list is not None:
         log.info(f"Merging permutation results from {len(args.perm_list)} files ...")
-        merge_perm_files(args.perm_list, args.out, args.sig_thresh)
+        merge_perm_files(args.perm_list, args.out, args.sig_thresh, args.cmac_bins)
         log.info(f"\nSaved merged permutation results to {args.out}_burden_perm.h5")
     else:
         try:
@@ -399,6 +416,7 @@ def run(args, log):
                 args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
             
             sparse_genotype.keep(common_ids)
+            sparse_genotype.extract_variant_type(args.variant_type)
             sparse_genotype.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
             sparse_genotype.extract_chr_interval(args.chr_interval)
             sparse_genotype.extract_maf(args.maf_min, args.maf_max)
@@ -412,6 +430,7 @@ def run(args, log):
                 locus, 
                 vset,
                 mac, 
+                args.cmac_bins,
                 loco_preds,
             )
 
@@ -427,7 +446,7 @@ def run(args, log):
 
             # permutation
             log.info("Doing permutation ...")
-            permutation = Permutation(mask, args.n_bootstrap, args.sig_thresh, args.threads)
+            permutation = Permutation(mask, args.cmac_bins, args.n_bootstrap, args.sig_thresh, args.threads)
             burden_sig_stats_dict, burden_count_dict = permutation.run()
 
             # save results

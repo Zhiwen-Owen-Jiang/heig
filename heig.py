@@ -451,7 +451,7 @@ common_parser.add_argument(
         "Variant type (case insensitive), "
         "must be one of ('variant', 'snv', 'indel'). "
         "Supported modules: --gwas, --make-mt, --cluster, --relatedness, "
-        "--make-rv-sumstats."
+        "--make-rv-sumstats, --permute."
     ),
 )
 common_parser.add_argument(
@@ -973,6 +973,16 @@ permutation_parser.add_argument(
         "Multiple files can be provided using {:}, e.g., `perm{1:10}.h5`."
     )
 )
+permutation_parser.add_argument(
+    "--cmac-bins",
+    help=(
+        "CMAC bin(s) to permute. Each bin is specified by `start_end`, e.g., `15_20` meaning "
+        "15 (included) to 20 (included). "
+        "Available options include: 2_2, 3_3, 4_4, 5_5, 6_7, 8_9, 10_11, 12_14, "
+        "15_20, 21_30, 31_60, 61_100, 101_200, 201_300. "
+        "Multiple cmac bins are separated by comma."
+    )
+)
 
 
 def check_accepted_args(module, args, log):
@@ -1437,6 +1447,7 @@ def check_accepted_args(module, args, log):
             "spark_conf",
             "grch37",
             "sparse_genotype",
+            "variant_type",
             "n_bootstrap",
             "voxels",
             "n_ldrs",
@@ -1453,6 +1464,7 @@ def check_accepted_args(module, args, log):
             "annot_ht",
             "cmac_min",
             "cmac_max",
+            "cmac_bins",
             "perm_list",
             "sig_thresh",
         },
