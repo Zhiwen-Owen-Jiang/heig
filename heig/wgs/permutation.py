@@ -157,6 +157,7 @@ class CreatingMask:
             mac, 
             cmac_bins,
             loco_preds,
+            n_points,
     ):
         self.locus = locus
         self.vset = vset
@@ -166,6 +167,7 @@ class CreatingMask:
         self.bases = null_model.bases
         self.mac = mac
         self.cmac_bins = cmac_bins
+        self.n_points = n_points
         
         if voxels is None:
             self.voxels = np.arange(self.bases.shape[0])
@@ -217,7 +219,7 @@ class CreatingMask:
         Get independent genes for each cMAC bin
         
         """
-        n_replicates = 100000
+        n_replicates = 100000 if self.n_points > 1e7 else self.n_points // 10
         gene_numeric_idxs = dict()
         variant_idxs = np.arange(self.n_variants)
         for bin in self.cmac_bins:
@@ -432,6 +434,7 @@ def run(args, log):
                 mac, 
                 args.cmac_bins,
                 loco_preds,
+                args.n_bootstrap,
             )
 
             log.info(f"{mask.n_variants} variants used in permutation.")

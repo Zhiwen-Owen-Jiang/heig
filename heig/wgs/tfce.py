@@ -150,7 +150,7 @@ class TFCEnull:
     def __init__(self, tfce_null_file):
         self.bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9), 
                      (10,11), (12,14), (15,20), (21,30), (31,60), 
-                     (61,100), (101,500), (501,)]
+                     (61,100), (101,200), (201,300), (301,1500), (1501,)]
         self.sig_stats = dict()
         self.count = dict()
         self.min_quantile = dict() 
@@ -432,10 +432,10 @@ def run(args, log):
     else:
         log.info(f"Read null associations from {args.null_assoc}")
         null_assoc = pd.read_csv(args.null_assoc, sep="\t")
-        cmac_breaks = [0, 2, 3, 4, 5, 7, 9, 11, 14, 20, 30, 60, 100, 200, 300, 500, 10000000]
+        cmac_breaks = [0, 2, 3, 4, 5, 7, 9, 11, 14, 20, 30, 60, 100, 200, 300, 1500, 10000000]
         cmac_bins = [(2,2), (3,3), (4,4), (5,5), (6,7), (8,9), (10,11), 
                      (12,14), (15,20), (21,30), (31,60), (61,100), (101,200), 
-                     (201,300), (301,500), (501,)]
+                     (201,300), (301,1500), (1501,)]
         null_assoc["cmac_bin"] = pd.cut(null_assoc["CMAC"], bins = cmac_breaks, labels=cmac_bins)
         null_assoc_by_cmac_bin = null_assoc.groupby("cmac_bin", observed=True)
 
