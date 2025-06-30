@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import hail as hl
 from heig.wgs.wgs2 import RVsumstats
 from heig.wgs.vsettest import VariantSetTest
+from heig.wgs.utils import PermDistribution
 from heig.wgs.utils import *
 
 
@@ -25,7 +26,6 @@ class Noncoding(ABC):
         Parameters:
         ------------
         annot: a hail.Table of annotations with key ('locus', 'alleles') and hail.struct of annotations
-        variant_type: variant type, one of ('variant', 'snv, 'indel')
         type: subtype of variants
 
         """
@@ -38,7 +38,7 @@ class Noncoding(ABC):
             Annotation_name_catalog["GENCODE.Info"]
         ]
 
-        if variant_type == "snv":
+        if variant_type != "indel":
             self.annot_cols = [
                 Annotation_name_catalog[annot_name] for annot_name in Annotation_name
             ]
@@ -58,9 +58,14 @@ class Noncoding(ABC):
         """
         pass
 
-    def parse_annot(self, variant_idx):
+    def parse_annot(self, variant_idx, use_annot_weights):
         """
         Parsing annotations and converting to np.array
+
+        Parameters:
+        ------------
+        variant_idx: a hail.expr of boolean indices to extract variants
+        use_annot_weights: boolean, using annotation weights
 
         Returns:
         ---------
@@ -78,7 +83,7 @@ class Noncoding(ABC):
         start = all_locus[0].position
         end = all_locus[-1].position
 
-        if self.annot_cols is not None:
+        if self.annot_cols is not None and use_annot_weights:
             annot_phred = filtered_annot.annot.select(*self.annot_cols).collect()
             phred_cate = np.array(
                 [[getattr(row, col) for col in self.annot_cols] for row in annot_phred]
@@ -192,7 +197,10 @@ def noncoding_vset_analysis(
     vset_test, 
     variant_category, 
     mac_thresh, 
+    tests,
     cmac_min, 
+    cmac_max,
+    use_annot_weights,
     log
 ):
     """
@@ -209,7 +217,10 @@ def noncoding_vset_analysis(
         one of ('all', 'upstream', 'downstream', 'promoter_cage', 'promoter_dhs',
         'enhancer_cage', 'enhancer_dhs', 'ncrna')
     mac_thresh: a MAC threshold to denote ultrarare variants for ACAT-V
+    tests: a list of rv tests
     cmac_min: the minimal cumulative MAC for a variant set
+    cmac_max: the maximumcumulative MAC for a variant set
+    use_annot_weights: boolean, using annotation weights
     log: a logger
 
     Returns:
@@ -255,30 +266,36 @@ def noncoding_vset_analysis(
 
         for category, category_class in category_class_dict.items():
             variant_idx = category_class.extract_variants(gene[0])
-            numeric_idx, phred_cate, chr, start, end = category_class.parse_annot(variant_idx)
+            numeric_idx, phred_cate, chr, start, end = category_class.parse_annot(variant_idx, use_annot_weights)
             if len(numeric_idx) <= 1:
                 log.info(f"Skipping {OFFICIAL_NAME[category]} (< 2 variants).")
+                continue
+            if phred_cate is not None and np.isnan(phred_cate).any():
+                log.info(f"Skipping {OFFICIAL_NAME[category]} (NAs in annotation weights).")
                 continue
             half_ldr_score, cov_mat, maf, mac = rv_sumstats.parse_data(numeric_idx)
             if half_ldr_score is None:
                 continue
             cmac = int(np.sum(mac))
-            if cmac < cmac_min:
-                log.info(f"Skipping {OFFICIAL_NAME[category]} (< {cmac_min} cumulative MAC).")
+            if cmac < cmac_min or cmac > cmac_max:
+                log.info(
+                    f"Skipping {OFFICIAL_NAME[category]} (cMAC ({cmac}) out of range)."
+                )
                 continue
             is_rare = mac < mac_thresh
-            vset_test.input_vset(half_ldr_score, cov_mat, maf, is_rare, phred_cate)
+            vset_test.input_vset(half_ldr_score, cov_mat, maf, cmac, is_rare, phred_cate)
             log.info(
                 (
                     f"Doing analysis for {OFFICIAL_NAME[category]} "
                     f"({vset_test.n_variants} variants, {cmac} alleles) ..."
                 )
             )
-            pvalues = vset_test.do_inference(category_class.annot_name)
+            pvalues, burden_test = vset_test.do_inference_tests(tests, category_class.annot_name)
             cate_pvalues[category] = {
                 "n_variants": vset_test.n_variants,
                 "cMAC": cmac,
                 "pvalues": pvalues,
+                "burden_test": burden_test,
             }
 
         yield gene[0], chr, start, end, cate_pvalues
@@ -297,10 +314,12 @@ def check_input(args, log):
     if args.variant_sets is None:
         raise ValueError("--variant-sets is required")
     log.info(f"{args.variant_sets.shape[0]} genes in --variant-sets.")
+    if args.perm is None:
+        raise ValueError("--perm is required")
 
-    if args.staar_only:
-        log.info("Saving STAAR-O results only.")
-    
+    if args.rv_tests is None:
+        args.rv_tests = ["staar"]
+
     if args.mac_thresh is None:
         args.mac_thresh = 10
         # log.info(f"Set --mac-thresh as default 10")
@@ -308,8 +327,18 @@ def check_input(args, log):
         raise ValueError("--mac-thresh must be greater than 0")
     
     if args.cmac_min is None:
-        args.cmac_min = 25
-        log.info(f"Set --cmac-min as default 25")
+        args.cmac_min = 2
+        log.info(f"Set --cmac-min as default 2")
+    if args.cmac_max is None:
+        args.cmac_max = np.inf
+
+    if args.cmac_min <= 1500 and ("staar" in args.rv_tests or "skat" in args.rv_tests):
+        log.info(
+            ("WARNING: SKAT/STAAR cannot be used for genes with cMAC <= 1500. "
+             "Only burden test will be used.")
+        )
+    if args.cmac_min <= 1500 and args.use_annot_weights:
+        log.info("WARNING: annotation weights cannot be used for genes with cMAC <= 1500.")
 
     if args.variant_category is None:
         variant_category = ["all"]
@@ -347,7 +376,9 @@ def run(args, log):
         init_hail(args.spark_conf, args.grch37, args.out, log)
 
         if args.extract_locus is not None:
-            args.extract_locus = read_extract_locus(args.extract_locus, args.grch37, log)
+            args.extract_locus, unique_chrs = read_extract_locus(args.extract_locus, args.grch37, log)
+        else:
+            unique_chrs = None
         if args.exclude_locus is not None:
             args.exclude_locus = read_exclude_locus(args.exclude_locus, args.grch37, log)
 
@@ -355,7 +386,7 @@ def run(args, log):
         log.info((f"Read rare variant summary statistics from "
                   f"{args.rv_sumstats_part1} and {args.rv_sumstats_part2}"))
         rv_sumstats = RVsumstats(args.rv_sumstats_part1, args.rv_sumstats_part2)
-        rv_sumstats.extract_exclude_locus(args.extract_locus, args.exclude_locus)
+        rv_sumstats.extract_exclude_locus(args.extract_locus, args.exclude_locus, unique_chrs)
         rv_sumstats.extract_chr_interval(args.chr_interval)
         rv_sumstats.extract_maf(args.maf_min, args.maf_max)
         rv_sumstats.extract_mac(args.mac_min, args.mac_max)
@@ -367,8 +398,14 @@ def run(args, log):
         log.info(f"Read functional annotations from {args.annot_ht}")
         annot = hl.read_table(args.annot_ht)
 
+        # reading permutation
+        log.info(f"Read permutation from {args.perm}")
+        perm = PermDistribution(args.perm)
+
         # single gene analysis
-        vset_test = VariantSetTest(rv_sumstats.bases, rv_sumstats.var)
+        if args.voxels is None:
+            args.voxels = np.arange(rv_sumstats.bases.shape[0])
+        vset_test = VariantSetTest(rv_sumstats.bases, rv_sumstats.var, perm, args.voxels)
         all_vset_test_pvalues = noncoding_vset_analysis(
             rv_sumstats,
             annot,
@@ -377,7 +414,10 @@ def run(args, log):
             vset_test,
             variant_category,
             args.mac_thresh,
+            args.rv_tests,
             args.cmac_min,
+            args.cmac_max,
+            args.use_annot_weights,
             log,
         )
         
@@ -385,10 +425,10 @@ def run(args, log):
         log.info(f"Saved result index file to {args.out}_result_index.txt")
 
         for set_name, chr, start, end, cate_pvalues in all_vset_test_pvalues:
-            cate_output = format_output(
+            cate_output, burden_output = format_output(
                 cate_pvalues,
                 rv_sumstats.voxel_idxs,
-                args.staar_only,
+                False,
                 args.sig_thresh
             )
             if cate_output is not None:
@@ -413,5 +453,19 @@ def run(args, log):
                 )
             else:
                 log.info(f"No significant results for {set_name}.")
+
+            if burden_output is not None:
+                out_path = f"{args.out}_{set_name}_burden.txt"
+                burden_output.to_csv(
+                    out_path,
+                    sep="\t",
+                    header=True,
+                    na_rep="NA",
+                    index=None,
+                    float_format="%.5e",
+                )
+                log.info(
+                    f"Saved burden results for {set_name} to {args.out}_{set_name}_burden.txt"
+                )
     finally:
         clean(args.out)
