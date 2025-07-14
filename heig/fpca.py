@@ -468,7 +468,7 @@ class EigenValues:
         self.logger.info("Imputing uncomputed eigenvalues using a B-spline (degree=1).")
         n_values = len(self.values)
         x_train = np.arange(n_values)
-        y_train = np.log(self.values)
+        y_train = np.log(self.values + 1e-10)
         spline = make_interp_spline(x_train, y_train, k=1)
         x_pred = np.arange(n_values, self.max_n_pc)
         y_pred = spline(x_pred)
