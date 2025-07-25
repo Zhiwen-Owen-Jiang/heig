@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import t
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 from heig.sumstats import read_sumstats
 from heig.voxelgwas import VGWAS, voxel_reader, recover_se_numba
 from heig.herigc import CommonSNPs
@@ -442,14 +443,35 @@ def run(args, log):
                 voxel_idxs, voxel_beta, vgwas.bases, vgwas.ldr_cov, vgwas.ztz_inv, vgwas.n
             )
             voxel_chisq = ((voxel_beta / voxel_se) ** 2).astype(np.float64)
-            for i, voxel_idx in enumerate(voxel_idxs):
-                output = partition_h2.run(voxel_chisq[:, i])
-                df = organized_output(
-                    *output, 
-                    annot_names=annot_names, 
-                    voxel_idx=voxel_idx+1,
-                    n_blocks=partition_h2.n_blocks)
-                all_df.append(df)
+            # for i, voxel_idx in enumerate(voxel_idxs):
+            #     output = partition_h2.run(voxel_chisq[:, i])
+            #     df = organized_output(
+            #         *output, 
+            #         annot_names=annot_names, 
+            #         voxel_idx=voxel_idx+1,
+            #         n_blocks=partition_h2.n_blocks)
+            #     all_df.append(df)
+            
+            def compute_one_df(args):
+                chisq_col, voxel_idx = args
+                output = partition_h2.run(chisq_col)
+                return organized_output(
+                    *output,
+                    annot_names=annot_names,
+                    voxel_idx=voxel_idx + 1,
+                    n_blocks=partition_h2.n_blocks
+                )
+
+            pairs = [
+                (voxel_chisq[:, i], voxel_idx)
+                for i, voxel_idx in enumerate(voxel_idxs)
+            ]
+
+            with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                for df in tqdm(executor.map(compute_one_df, pairs),
+                               total=len(pairs),
+                               desc="voxels processed"):
+                    all_df.append(df)
 
         all_df = pd.concat(all_df, ignore_index=True)
         for _, annot_df in all_df.groupby("Category"):

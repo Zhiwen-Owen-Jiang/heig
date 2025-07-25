@@ -604,13 +604,18 @@ class GProcessor:
 
         """
         if chr_interval is not None:
-            self.chr, self.start, self.end = parse_interval(chr_interval, self.geno_ref)
-            self.logger.info(
-                f"Extracted variants in {self.chr} from {self.start} to {self.end}"
-            )
-            interval = hl.locus_interval(
-                self.chr, self.start, self.end, reference_genome=self.geno_ref, includes_end=True
-            )
+            # self.chr, self.start, self.end = parse_interval(chr_interval, self.geno_ref)
+            # self.logger.info(
+            #     f"Extracted variants in {self.chr} from {self.start} to {self.end}"
+            # )
+            # interval = hl.locus_interval(
+            #     self.chr, self.start, self.end, reference_genome=self.geno_ref, 
+            #     includes_end=True, invalid_missing=True
+            # )
+            self.logger.info(f"Extracted variants in {chr_interval}")
+            if self.geno_ref == 'GRCh38':
+                chr_interval = 'chr' + chr_interval # TODO: make it more rigorous
+            interval = hl.parse_locus_interval(chr_interval, reference_genome=self.geno_ref)
             self.snps_mt = self.snps_mt.filter_rows(
                 interval.contains(self.snps_mt.locus)
             )
@@ -648,6 +653,14 @@ class GProcessor:
         if filtering is not None:
             self.snps_mt = self.snps_mt.filter_cols(filtering)
             self.snps_mt = self.snps_mt.filter_rows(hl.agg.any(self.snps_mt.GT.n_alt_alleles() > 0))
+            self.n_sub = self.snps_mt.count_cols()
+            self.n_variants = self.snps_mt.count_rows()
+            self.logger.info(
+                (
+                    f"{self.n_sub} subjects and "
+                    f"{self.n_variants} variants after filtering subjects and non variants."
+                )
+            )
         
 
     def extract_range(self):

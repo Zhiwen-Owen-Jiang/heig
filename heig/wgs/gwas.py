@@ -41,7 +41,7 @@ def parse_ldr_col(ldr_col):
     res = sorted(list(set(res)))
     if res[-1] - res[0] + 1 != len(res):
         raise ValueError(
-            "it is very rare that columns in --ldr-col are not consective for LDR GWAS"
+            "it is very rare that columns in --ldr-col are not consecutive for LDR GWAS"
         )
     if res[0] < 0:
         raise ValueError("the min index less than 1")
