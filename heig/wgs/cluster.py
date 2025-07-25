@@ -88,9 +88,9 @@ class Cluster:
         # because here we are focusing on null distribution
         # proxy contamination does not really matter
         # this can significantly speed up the program
-        if self.loco_preds is not None:
-            self.resid_ldrs = self.resid_ldrs - self.loco_preds.data_reader(21)
-            self.loco_preds = None
+        # if self.loco_preds is not None:
+        #     self.resid_ldrs = self.resid_ldrs - self.loco_preds.data_reader(21)
+        #     self.loco_preds = None
 
         self.is_valid_snp, self.snpinfo = None, None
 
