@@ -1045,6 +1045,7 @@ def check_accepted_args(module, args, log):
             "cat_covar_list",
             "keep",
             "remove",
+            "threads"
         },
         "ld_matrix": {
             "out",

@@ -1,3 +1,4 @@
+import concurrent.futures
 import numpy as np
 import pandas as pd
 import heig.input.dataset as ds
@@ -167,14 +168,28 @@ def run(args, log):
             for alt_n_ldrs in alt_n_ldrs_list
         }
         start_idx, end_idx = 0, 0
-        for images_, _ in images.image_reader():
-            start_idx = end_idx
-            end_idx += images_.shape[0] 
-            ldrs_ = np.dot(images_, bases)
-            ldrs[start_idx:end_idx] = ldrs_
-            evaluate_image_corr(
-                images_, start_idx, end_idx, ldrs_, bases, rec_corr_images
-            )
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=args.threads
+        ) as executor:
+            futures = []
+            for images_, _ in images.image_reader():
+                start_idx = end_idx
+                end_idx += images_.shape[0] 
+                ldrs_ = np.dot(images_, bases)
+                ldrs[start_idx:end_idx] = ldrs_
+                futures.append(
+                    executor.submit(
+                        evaluate_image_corr,
+                        images_, start_idx, end_idx, ldrs_, bases, rec_corr_images
+                    )
+                )
+
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    executor.shutdown(wait=False)
+                    raise RuntimeError(f"Computation terminated due to error: {exc}")
 
         # recon corr of images
         log.info(
@@ -188,12 +203,26 @@ def run(args, log):
             for alt_n_ldrs in alt_n_ldrs_list
         }
         start_idx, end_idx = 0, 0
-        for images_, _ in images.voxel_reader():
-            start_idx = end_idx
-            end_idx += images_.shape[1]
-            evaluate_voxel_corr(
-                images_, start_idx, end_idx, ldrs, bases, rec_corr_voxels
-            )
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=args.threads
+        ) as executor:
+            futures = []
+            for images_, _ in images.voxel_reader():
+                start_idx = end_idx
+                end_idx += images_.shape[1]
+                futures.append(
+                    executor.submit(
+                        evaluate_voxel_corr,
+                        images_, start_idx, end_idx, ldrs, bases, rec_corr_voxels
+                    )
+                )
+
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    executor.shutdown(wait=False)
+                    raise RuntimeError(f"Computation terminated due to error: {exc}")
 
         log.info(
             "Mean correlation between reconstructed voxels and raw voxels using varying numbers of LDRs:"
