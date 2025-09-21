@@ -181,6 +181,7 @@ class LDmatrix:
                     cur_group.append(i)
                     merged_blocks.append(tuple(cur_group))
                 else:
+                    merged_blocks.append(tuple(cur_group))
                     merged_blocks.append(tuple([i]))
 
         return merged_blocks
