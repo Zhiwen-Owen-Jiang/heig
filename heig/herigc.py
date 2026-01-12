@@ -226,8 +226,9 @@ class OneSample(Estimation):
         self.gene_var = np.sum(
             np.dot(self.bases, self.ldr_gene_cov) * self.bases, axis=1
         )
-        self.gene_var[self.gene_var <= 0] = np.nan
         self.heri = self.gene_var / self.sigmaX_var
+        self.heri[self.heri <= 0] = 1e-5
+        self.heri[self.heri >= 1] = 1 - 1e-5
         self.heri_se = self._get_heri_se(self.heri, self.ld_rank, self.nbar)
         self.heri, self.heri_se = self._qc(self.heri, self.heri_se, 0, 1, 0, 1)
 
