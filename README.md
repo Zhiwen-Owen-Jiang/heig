@@ -52,7 +52,7 @@ We provided detailed [tutorial](https://github.com/Zhiwen-Owen-Jiang/heig/wiki) 
 If that does not work, email Owen Jiang <owenjf@live.unc.edu> or <zhiwenowenjiang@gmail.com>.
 
 ## Citation
-TBD.
+Jiang, Zhiwen, et al. "Computation and resource efficient genome-wide association analysis for large-scale imaging studies." Nature communications (2026).
 
 ## Licence
 This project is licensed under GNU GPL v3.
