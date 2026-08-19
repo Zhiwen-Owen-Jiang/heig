@@ -43,7 +43,18 @@ conda create --name heig python=3.11
 conda activate heig
 pip install -r requirements.txt
 ```
+If you take this route, note that Java is **not** installed by `pip` and must be available separately (see below).
+
 Since version v1.2.0, [hail](https://hail.is) has been a dependency for conducting GWAS analysis. If you fail to install hail, please contact the hail team.
+
+`hail` runs on a Java virtual machine through `pyspark`, so a **Java 8 or 11** runtime is required for all WGS analyses. `environment.yml` installs one (`openjdk=8`) for you. If you installed the dependencies with `pip` instead, make sure a suitable Java runtime is on your `PATH`
+```
+java -version
+```
+and install one into the environment if it is missing or is a newer version (Java 17 and above are not supported by `hail` 0.2.130)
+```
+conda install -c conda-forge openjdk=8
+```
 
 
 ## How to use HEIG

@@ -1,3 +1,5 @@
+# hail 0.2.130 imports pkg_resources, removed in setuptools 81
+setuptools<81
 numpy==1.26.4
 pandas==2.2.2
 nibabel==5.2.1

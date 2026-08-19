@@ -4,17 +4,10 @@ channels:
  - conda-forge
 dependencies:
  - python=3.11
- - openjdk=8
- - numpy=1.26.4
- - pandas=2.2.2
- - nibabel=5.2.1
- - scipy=1.11.4
- - scikit-learn=1.4.2
- - bitarray=2.9.2
- - h5py=3.11.0
- - numexpr=2.10.0
- - tqdm=4.66.4
- - pyarrow=17.0.0
- - filelock=3.15.4
- - hail=0.2.130
- - numba=0.61.0
+ # hail runs on a JVM through pyspark and does not bundle one;
+ # hail 0.2.130 requires Java 8 or 11
+ - conda-forge::openjdk=8
+ - pip
+ # the remaining dependencies are only distributed on PyPI
+ - pip:
+   - -r requirements.txt
