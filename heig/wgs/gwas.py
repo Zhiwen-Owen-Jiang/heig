@@ -281,6 +281,12 @@ def run(args, log):
 
         log.info(f"Read covariates from {args.covar}")
         covar = ds.Covar(args.covar, args.cat_covar_list)
+        if args.extract_covar_list is not None:
+            extract_covar_list = ds.parse_input(args.extract_covar_list)
+            covar.extract_covar(extract_covar_list)
+        if args.exclude_covar_list is not None:
+            exclude_covar_list = ds.parse_input(args.exclude_covar_list)
+            covar.exclude_covar(exclude_covar_list)
 
         # read loco preds
         if args.loco_preds is not None:

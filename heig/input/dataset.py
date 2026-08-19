@@ -136,6 +136,26 @@ class Covar(Dataset):
         """
         super().__init__(dir)
         self.cat_covar_list = cat_covar_list
+        
+    def extract_covar(self, extract_covar_list):
+        """
+        Parameters:
+        ------------
+        extract_covar_list: a list of covariates to extract
+        
+        """
+        self._check_validcatlist(extract_covar_list)
+        self.data = self.data[extract_covar_list]
+
+    def exclude_covar(self, exclude_covar_list):
+        """
+        Parameters:
+        ------------
+        exclude_covar_list: a list of covariates to exclude
+        
+        """
+        self._check_validcatlist(exclude_covar_list)
+        self.data = self.data.drop(columns=exclude_covar_list)
 
     def cat_covar_intercept(self):
         """
@@ -146,7 +166,7 @@ class Covar(Dataset):
 
         """
         if self.cat_covar_list is not None:
-            catlist = self.cat_covar_list.split(",")
+            catlist = parse_input(self.cat_covar_list)
             self._check_validcatlist(catlist)
             self.logger.info(
                 f"{len(catlist)} categorical variables provided by --cat-covar-list."

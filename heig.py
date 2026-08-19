@@ -390,6 +390,22 @@ common_parser.add_argument(
     ),
 )
 common_parser.add_argument(
+    "--extract-covar-list",
+    help=(
+        "List of covariates to extract in the analysis. "
+        "Multiple covariates are separated by comma. "
+        "Supported modules: --make-ldr, --gwas, --cluster, --relatedness, --rv-null."
+    ),
+)
+common_parser.add_argument(
+    "--exclude-covar-list",
+    help=(
+        "List of covariates to exclude in the analysis. "
+        "Multiple covariates are separated by comma. "
+        "Supported modules: --make-ldr, --gwas, --cluster, --relatedness, --rv-null."
+    ),
+)
+common_parser.add_argument(
     "--bfile",
     help=(
         "Prefix of PLINK bfile triplets. "
@@ -1043,6 +1059,8 @@ def check_accepted_args(module, args, log):
             "n_ldrs",
             "covar",
             "cat_covar_list",
+            "extract_covar_list",
+            "exclude_covar_list",
             "keep",
             "remove",
             "threads"
@@ -1116,6 +1134,8 @@ def check_accepted_args(module, args, log):
             "geno_mt",
             "covar",
             "cat_covar_list",
+            "extract_covar_list",
+            "exclude_covar_list",
             "loco_preds",
             "spark_conf",
         },
@@ -1144,6 +1164,8 @@ def check_accepted_args(module, args, log):
             "ldrs",
             "covar",
             "cat_covar_list",
+            "extract_covar_list",
+            "exclude_covar_list",
             "partition",
             "maf_min",
             "maf_max",
@@ -1194,6 +1216,8 @@ def check_accepted_args(module, args, log):
             "bases",
             "covar",
             "cat_covar_list",
+            "extract_covar_list",
+            "exclude_covar_list",
             "keep",
             "remove",
         },
@@ -1324,6 +1348,8 @@ def check_accepted_args(module, args, log):
             "covar",
             "voxels",
             "cat_covar_list",
+            "extract_covar_list",
+            "exclude_covar_list",
             "spark_conf",
             "grch37",
             "geno_mt",
