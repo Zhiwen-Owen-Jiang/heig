@@ -378,8 +378,10 @@ class OneSample(Estimation):
         gene_cor_se += d / n**2 * temp3
         gene_cor_se -= d / n**2 * gene_cor2 * part2 * part3
 
-        np.fill_diagonal(gene_cor, 1)
-        np.fill_diagonal(gene_cor_se, 0)
+        # the diagonal of this block is at global columns start:end
+        block_idx = np.arange(gene_cor.shape[0])
+        gene_cor[block_idx, start + block_idx] = 1
+        gene_cor_se[block_idx, start + block_idx] = 0
         gene_cor, gene_cor_se = self._qc(gene_cor, gene_cor_se, -1, 1, 0, 1)
         np.sqrt(gene_cor_se, out=gene_cor_se)
 
