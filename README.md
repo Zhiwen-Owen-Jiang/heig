@@ -15,6 +15,7 @@ The analyses incorporated in HEIG:
 - [v1.1.0](https://github.com/Zhiwen-Owen-Jiang/heig/releases/tag/v1.1.0): support multi-threading computation; many changes in data format; not compatible with v1.0.0.
 - [v1.2.0](https://github.com/Zhiwen-Owen-Jiang/heig/releases/tag/v1.2.0): support LDR GWAS; provide more data mangement options; fix bugs in v1.1.0.
 - [v1.2.1](https://github.com/Zhiwen-Owen-Jiang/heig/releases/tag/v1.2.1): support post-GWAS screening by cluster size analysis.
+- [v1.6.1-alpha](https://github.com/Zhiwen-Owen-Jiang/heig/releases/tag/v1.6.1-alpha): the latest version supporting voxel-level analysis for both common and rare variants. 
 
 ## System Requirements
 ### OS Requirements
